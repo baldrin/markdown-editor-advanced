@@ -162,27 +162,71 @@ button.tb.toggled { background: var(--accent-soft); color: var(--accent); }
   display: flex;
   flex-direction: column;
 }
-#editorPane { border-right: 1px solid var(--border); }
+#editorPane { border-right: 1px solid var(--border); background: var(--bg); }
+#editorWrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
 body.mode-edit #previewPane { display: none; }
 body.mode-edit #editorPane { border-right: none; }
 body.mode-preview #editorPane { display: none; }
 
+/* The editor is a transparent textarea over a coloured copy of its text.
+   Every property below that affects glyph placement or wrapping must stay
+   identical on both, or the two layers drift. */
+#editor, #overlayText {
+  margin: 0;
+  padding: 24px 28px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13.5px;
+  line-height: 1.7;
+  letter-spacing: normal;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+  text-indent: 0;
+}
 #editor {
   flex: 1;
   width: 100%;
   border: none;
   resize: none;
   outline: none;
-  padding: 24px 28px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 13.5px;
-  line-height: 1.7;
-  tab-size: 2;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
   caret-color: var(--accent);
 }
+#editor::placeholder { color: var(--text-dim); opacity: 1; }
 #editor::selection { background: var(--accent-soft); }
+#overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text);
+}
+#overlayText { will-change: transform; }
+/* Overlay tokens: colour and decoration only, never weight, style, size or family. */
+.o-h, .o-hmark { color: var(--accent); }
+.o-code { color: var(--hl-str); }
+.o-fence { color: var(--text-dim); }
+.o-mark { color: var(--hl-num); }
+.o-strong { color: var(--hl-type); }
+.o-del { color: var(--text-dim); text-decoration: line-through; }
+.o-link { color: var(--accent); }
+.o-url { color: var(--text-dim); text-decoration: underline; }
+.o-quote { color: var(--hl-fn); }
+.o-quotebody { color: var(--text-dim); }
+.o-list { color: var(--hl-num); }
+.o-task { color: var(--hl-fn); }
+.o-pipe, .o-hr, .o-tag { color: var(--text-dim); }
 
 #previewPane {
   overflow-y: auto;
@@ -425,7 +469,10 @@ body.dragging #dropOverlay { display: flex; }
 
 <div id="main">
   <section id="editorPane">
-    <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="Start writing markdown…"></textarea>
+    <div id="editorWrap">
+      <div id="overlay" aria-hidden="true"><div id="overlayText"></div></div>
+      <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="Start writing markdown…"></textarea>
+    </div>
   </section>
   <section id="previewPane">
     <article id="preview"></article>
@@ -1990,6 +2037,123 @@ return Pe}()
     }
   }
 
+
+  /* ---------- Editor overlay (markdown highlighting) ---------- */
+  // A coloured copy of the source sits under the transparent textarea. Only
+  // colour and text-decoration are applied, so glyph widths match exactly.
+  const overlay = document.getElementById('overlay');
+  const overlayText = document.getElementById('overlayText');
+
+  const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const tok = (cls, s) => s ? '<span class="' + cls + '">' + escHtml(s) + '</span>' : '';
+
+  // Inline constructs, tried left to right at each position:
+  //  1-2 code span   3-7 link/image   8 autolink   9-10 strong
+  //  11-12 emphasis  13-14 strikethrough  then html tag, then bare URL
+  const INLINE_RE = /(`+)([\s\S]*?[^`])\1(?!`)|(!?\[)([^\]]*)(\]\()([^)]*)(\))|<((?:https?:\/\/|mailto:)[^>\s]+|[^\s@<>]+@[^\s@<>]+)>|(\*\*|__)(?=\S)([\s\S]*?\S)\9|(?<![A-Za-z0-9])(\*|_)(?=\S)([^*_]*?\S)\11(?![A-Za-z0-9])|(~~)(?=\S)([\s\S]*?\S)\13|<\/?[A-Za-z][^<>]*>|https?:\/\/[^\s<>]+/g;
+
+  function hlInline(s) {
+    let out = '', last = 0, m;
+    INLINE_RE.lastIndex = 0;
+    while ((m = INLINE_RE.exec(s))) {
+      const next = INLINE_RE.lastIndex;
+      out += escHtml(s.slice(last, m.index));
+      last = next;
+      if (m[1] !== undefined) out += tok('o-code', m[0]);
+      else if (m[3] !== undefined) out += tok('o-mark', m[3]) + tok('o-link', m[4]) + tok('o-mark', m[5]) + tok('o-url', m[6]) + tok('o-mark', m[7]);
+      else if (m[8] !== undefined) out += tok('o-mark', '<') + tok('o-url', m[8]) + tok('o-mark', '>');
+      else if (m[9] !== undefined) out += tok('o-mark', m[9]) + '<span class="o-strong">' + hlInline(m[10]) + '</span>' + tok('o-mark', m[9]);
+      else if (m[11] !== undefined) out += tok('o-mark', m[11]) + '<span class="o-em">' + hlInline(m[12]) + '</span>' + tok('o-mark', m[11]);
+      else if (m[13] !== undefined) out += tok('o-mark', '~~') + '<span class="o-del">' + hlInline(m[14]) + '</span>' + tok('o-mark', '~~');
+      else if (m[0][0] === '<') out += tok('o-tag', m[0]);
+      else out += tok('o-url', m[0]);
+      INLINE_RE.lastIndex = next; // recursion above resets it
+    }
+    return out + escHtml(s.slice(last));
+  }
+
+  function hlBlock(line) {
+    let out = '', rest = line, m;
+    const bq = rest.match(/^(\s{0,3}>\s?)+/);
+    if (bq) {
+      out += tok('o-quote', bq[0]);
+      rest = rest.slice(bq[0].length);
+      return out + '<span class="o-quotebody">' + hlBlock(rest) + '</span>';
+    }
+    if ((m = rest.match(/^(\s{0,3}#{1,6})(\s+|$)([\s\S]*)$/))) {
+      return out + tok('o-hmark', m[1] + m[2]) + '<span class="o-h">' + hlInline(m[3]) + '</span>';
+    }
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(rest)) return out + tok('o-hr', rest);
+    if (/^\s{0,3}=+\s*$/.test(rest)) return out + tok('o-hmark', rest);
+    if ((m = rest.match(/^(\s*)([-*+]|\d{1,9}[.)])(\s+)/))) {
+      out += escHtml(m[1]) + tok('o-list', m[2]) + escHtml(m[3]);
+      rest = rest.slice(m[0].length);
+      const t = rest.match(/^\[[ xX]\](?=\s|$)/);
+      if (t) { out += tok('o-task', t[0]); rest = rest.slice(t[0].length); }
+    }
+    if (rest.includes('|')) {
+      if (/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(rest)) return out + tok('o-pipe', rest);
+      return out + rest.split(/(\|)/).map(p => p === '|' ? tok('o-pipe', p) : hlInline(p)).join('');
+    }
+    return out + hlInline(rest);
+  }
+
+  function highlightMarkdown(text) {
+    const lines = text.split('\n');
+    const out = new Array(lines.length);
+    let fence = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const fm = line.match(/^(\s{0,3})(`{3,}|~{3,})(.*)$/);
+      if (fence) {
+        if (fm && fm[2][0] === fence.ch && fm[2].length >= fence.len && !fm[3].trim()) {
+          out[i] = tok('o-fence', line);
+          fence = null;
+        } else {
+          out[i] = tok('o-code', line);
+        }
+        continue;
+      }
+      if (fm && !(fm[2][0] === '`' && fm[3].includes('`'))) {
+        fence = { ch: fm[2][0], len: fm[2].length };
+        out[i] = tok('o-fence', line);
+        continue;
+      }
+      out[i] = hlBlock(line);
+    }
+    // A trailing newline inside a block is dropped by the renderer, but the
+    // textarea shows the empty line after it. One extra newline keeps them equal.
+    return out.join('\n') + '\n';
+  }
+
+  function renderOverlay() {
+    overlayText.innerHTML = highlightMarkdown(editor.value);
+    fitOverlay(); // a scrollbar may have appeared or gone with this edit
+  }
+
+  let overlayScrollPending = false;
+  function syncOverlayScroll() {
+    if (overlayScrollPending) return;
+    overlayScrollPending = true;
+    requestAnimationFrame(() => {
+      overlayScrollPending = false;
+      overlayText.style.transform = 'translate(' + (-editor.scrollLeft) + 'px,' + (-editor.scrollTop) + 'px)';
+    });
+  }
+
+  // The overlay must wrap at the textarea's content width, which excludes any
+  // visible scrollbar, so it is sized from clientWidth rather than 100%.
+  let overlayWidth = -1;
+  function fitOverlay() {
+    const w = editor.clientWidth;
+    if (w !== overlayWidth) {
+      overlayWidth = w;
+      overlayText.style.width = w + 'px';
+    }
+    syncOverlayScroll();
+  }
+  new ResizeObserver(fitOverlay).observe(editor);
+
   /* ---------- Scroll sync (split view) ---------- */
   function syncScroll(srcName, srcEl, dstEl) {
     if (scrollLock && scrollLock !== srcName) return;
@@ -2004,6 +2168,7 @@ return Pe}()
   }
 
   editor.addEventListener('scroll', () => {
+    syncOverlayScroll();
     if (mode === 'split') syncScroll('editor', editor, previewPane);
   });
   previewPane.addEventListener('scroll', () => {
@@ -2292,6 +2457,7 @@ return Pe}()
   }, 120);
 
   editor.addEventListener('input', () => {
+    renderOverlay();
     setDirty(true);
     // While typing, the editor drives the sync; a preview re-render must not
     // scroll the editor away from the caret.
@@ -2312,6 +2478,7 @@ return Pe}()
       store.set('mdadv.backup', editor.value);
     }
     editor.value = text;
+    renderOverlay();
     fileHandle = handle || null;
     fileName = name || '';
     fileNameEl.textContent = fileName || 'Draft';
@@ -2536,6 +2703,7 @@ return Pe}()
 
   const draft = store.get('mdadv.content');
   editor.value = draft != null && draft !== '' ? draft : WELCOME;
+  renderOverlay();
   render();
   updateCounts();
   updateCursor();
