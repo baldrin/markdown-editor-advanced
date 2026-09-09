@@ -4,6 +4,8 @@ A more capable sibling of [Markdown Editor](https://github.com/baldrin/markdown-
 
 The original stays small, offline, and dependency-free. This one is allowed to grow.
 
+**Try it live:** https://baldrin.github.io/markdown-editor-advanced/
+
 ## Planned
 
 - Find and replace
@@ -16,7 +18,7 @@ The original stays small, offline, and dependency-free. This one is allowed to g
 
 ## Usage
 
-Open `index.html` in any modern browser.
+Use the [hosted version](https://baldrin.github.io/markdown-editor-advanced/), or open `index.html` in any modern browser.
 
 ## License
 
