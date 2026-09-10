@@ -35,6 +35,8 @@
   --hl-type: #953800;
   --hl-var: #0550ae;
   --hl-meta: #82071e;
+  --find-bg: rgba(255, 213, 0, 0.35);
+  --find-cur: rgba(255, 140, 0, 0.6);
 }
 :root[data-theme="dark"] {
   --bg: #0d1117;
@@ -55,6 +57,8 @@
   --hl-type: #ffa657;
   --hl-var: #79c0ff;
   --hl-meta: #ffa198;
+  --find-bg: rgba(255, 213, 0, 0.22);
+  --find-cur: rgba(255, 140, 0, 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -177,7 +181,7 @@ body.mode-preview #editorPane { display: none; }
 /* The editor is a transparent textarea over a coloured copy of its text.
    Every property below that affects glyph placement or wrapping must stay
    identical on both, or the two layers drift. */
-#editor, #overlayText {
+#editor, #overlayText, #findLayer {
   margin: 0;
   padding: 24px 28px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -212,7 +216,65 @@ body.mode-preview #editorPane { display: none; }
   pointer-events: none;
   color: var(--text);
 }
-#overlayText { will-change: transform; }
+#overlayScroll { position: relative; will-change: transform; }
+#findLayer { position: absolute; inset: 0; color: transparent; }
+.f-m { background: var(--find-bg); border-radius: 2px; }
+.f-cur { background: var(--find-cur); border-radius: 2px; }
+
+/* ---------- Find bar ---------- */
+#findBar {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+#findBar[hidden] { display: none; }
+.find-row { display: flex; align-items: center; gap: 4px; }
+.find-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.find-row input:focus { border-color: var(--accent); }
+#findCount {
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: right;
+  padding: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+#findCount.bad { color: var(--hl-kw); }
+button.fb {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  height: 24px;
+  min-width: 26px;
+  padding: 0 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+button.fb:hover { background: var(--bg3); }
+button.fb:active { background: var(--accent-soft); }
+button.fb.toggled { background: var(--accent-soft); color: var(--accent); }
+button.fb:disabled { opacity: 0.4; cursor: default; background: transparent; }
 /* Overlay tokens: colour and decoration only, never weight, style, size or family. */
 .o-h, .o-hmark { color: var(--accent); }
 .o-code { color: var(--hl-str); }
@@ -469,8 +531,24 @@ body.dragging #dropOverlay { display: flex; }
 
 <div id="main">
   <section id="editorPane">
+    <div id="findBar" hidden>
+      <div class="find-row">
+        <input id="findInput" type="text" placeholder="Find" spellcheck="false" autocomplete="off" aria-label="Find">
+        <span id="findCount" aria-live="polite"></span>
+        <button class="fb" id="findPrev" title="Previous match (Shift+Enter)">&#8593;</button>
+        <button class="fb" id="findNext" title="Next match (Enter)">&#8595;</button>
+        <button class="fb" id="findCase" title="Match case" aria-pressed="false">Aa</button>
+        <button class="fb" id="findRegex" title="Regular expression" aria-pressed="false">.*</button>
+        <button class="fb" id="findClose" title="Close (Esc)">&#10005;</button>
+      </div>
+      <div class="find-row">
+        <input id="replaceInput" type="text" placeholder="Replace" spellcheck="false" autocomplete="off" aria-label="Replace">
+        <button class="fb" id="replaceOne" title="Replace this match (Enter)">Replace</button>
+        <button class="fb" id="replaceAll" title="Replace all matches (&#8984;Enter)">All</button>
+      </div>
+    </div>
     <div id="editorWrap">
-      <div id="overlay" aria-hidden="true"><div id="overlayText"></div></div>
+      <div id="overlay" aria-hidden="true"><div id="overlayScroll"><div id="findLayer"></div><div id="overlayText"></div></div></div>
       <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="Start writing markdown…"></textarea>
     </div>
   </section>
@@ -1994,54 +2072,10 @@ return Pe}()
     });
   }
 
-  /* ---------- Keep the caret on screen ---------- */
-  // A textarea scrolls its caret into view natively, but the split-view sync
-  // can move the editor again right after (the preview re-renders, fires a
-  // scroll event, and mirrors its position back). Measure the caret line with
-  // a hidden mirror of the textarea and scroll it into view explicitly.
-  let caretMirror = null;
-  function ensureCaretVisible() {
-    if (document.activeElement !== editor) return;
-    if (!caretMirror) {
-      caretMirror = document.createElement('div');
-      caretMirror.setAttribute('aria-hidden', 'true');
-      Object.assign(caretMirror.style, {
-        position: 'absolute', top: '0', left: '-9999px', visibility: 'hidden',
-        whiteSpace: 'pre-wrap', wordWrap: 'break-word', overflowWrap: 'break-word',
-        boxSizing: 'border-box', pointerEvents: 'none'
-      });
-      document.body.appendChild(caretMirror);
-    }
-    const cs = getComputedStyle(editor);
-    ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
-     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tabSize', 'borderWidth']
-      .forEach(k => { caretMirror.style[k] = cs[k]; });
-    caretMirror.style.width = editor.clientWidth + 'px';
-
-    const pos = editor.selectionEnd;
-    caretMirror.textContent = editor.value.slice(0, pos);
-    const marker = document.createElement('span');
-    marker.textContent = editor.value.slice(pos, pos + 1) || '\u200b';
-    caretMirror.appendChild(marker);
-
-    const lineHeight = parseFloat(cs.lineHeight) || 22;
-    const caretTop = marker.offsetTop;
-    const caretBottom = caretTop + lineHeight;
-    const margin = 8;
-    const viewTop = editor.scrollTop;
-    const viewBottom = viewTop + editor.clientHeight;
-    if (caretTop < viewTop + margin) {
-      editor.scrollTop = Math.max(0, caretTop - margin);
-    } else if (caretBottom > viewBottom - margin) {
-      editor.scrollTop = caretBottom - editor.clientHeight + margin;
-    }
-  }
-
-
   /* ---------- Editor overlay (markdown highlighting) ---------- */
   // A coloured copy of the source sits under the transparent textarea. Only
   // colour and text-decoration are applied, so glyph widths match exactly.
-  const overlay = document.getElementById('overlay');
+  const overlayScroll = document.getElementById('overlayScroll');
   const overlayText = document.getElementById('overlayText');
 
   const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -2129,6 +2163,7 @@ return Pe}()
   function renderOverlay() {
     overlayText.innerHTML = highlightMarkdown(editor.value);
     fitOverlay(); // a scrollbar may have appeared or gone with this edit
+    refreshFind();
   }
 
   let overlayScrollPending = false;
@@ -2137,7 +2172,7 @@ return Pe}()
     overlayScrollPending = true;
     requestAnimationFrame(() => {
       overlayScrollPending = false;
-      overlayText.style.transform = 'translate(' + (-editor.scrollLeft) + 'px,' + (-editor.scrollTop) + 'px)';
+      overlayScroll.style.transform = 'translate(' + (-editor.scrollLeft) + 'px,' + (-editor.scrollTop) + 'px)';
     });
   }
 
@@ -2148,11 +2183,262 @@ return Pe}()
     const w = editor.clientWidth;
     if (w !== overlayWidth) {
       overlayWidth = w;
-      overlayText.style.width = w + 'px';
+      overlayScroll.style.width = w + 'px';
     }
     syncOverlayScroll();
   }
   new ResizeObserver(fitOverlay).observe(editor);
+
+
+  /* ---------- Keep a position on screen ---------- */
+  // The overlay is a live, laid-out mirror of the textarea, so a text offset
+  // can be measured there with a Range instead of a separate hidden copy.
+  function overlayLineTop(pos) {
+    const walker = document.createTreeWalker(overlayText, NodeFilter.SHOW_TEXT);
+    let node, acc = 0;
+    while ((node = walker.nextNode())) {
+      const len = node.nodeValue.length;
+      if (pos < acc + len) {
+        const r = document.createRange();
+        r.setStart(node, pos - acc);
+        r.setEnd(node, pos - acc + 1);
+        const rects = r.getClientRects();
+        if (!rects.length) return null;
+        return rects[0].top - overlayScroll.getBoundingClientRect().top;
+      }
+      acc += len;
+    }
+    return null;
+  }
+
+  // Scroll the textarea so the line holding `pos` is visible. With `center`
+  // the line lands a third of the way down, which suits jumping to a match.
+  function revealEditorPos(pos, center) {
+    const top = overlayLineTop(pos);
+    if (top == null) return;
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 22;
+    const bottom = top + lineHeight;
+    const margin = 8;
+    const viewTop = editor.scrollTop;
+    const viewBottom = viewTop + editor.clientHeight;
+    if (top >= viewTop + margin && bottom <= viewBottom - margin) return;
+    let target;
+    if (center) target = top - editor.clientHeight / 3;
+    else if (top < viewTop + margin) target = top - margin;
+    else target = bottom - editor.clientHeight + margin;
+    scrollLock = 'editor';
+    clearTimeout(scrollLockTimer);
+    scrollLockTimer = setTimeout(() => { scrollLock = null; }, 200);
+    editor.scrollTop = Math.max(0, target);
+  }
+
+  // A textarea scrolls its caret into view natively, but the split-view sync
+  // can move the editor again right after (the preview re-renders, fires a
+  // scroll event, and mirrors its position back). Put the caret back on screen.
+  function ensureCaretVisible() {
+    if (document.activeElement !== editor) return;
+    revealEditorPos(editor.selectionEnd, false);
+  }
+
+  /* ---------- Find and replace ---------- */
+  const findBar = document.getElementById('findBar');
+  const findInput = document.getElementById('findInput');
+  const replaceInput = document.getElementById('replaceInput');
+  const findCount = document.getElementById('findCount');
+  const findLayer = document.getElementById('findLayer');
+  const btnFindPrev = document.getElementById('findPrev');
+  const btnFindNext = document.getElementById('findNext');
+  const btnFindCase = document.getElementById('findCase');
+  const btnFindRegex = document.getElementById('findRegex');
+  const btnReplaceOne = document.getElementById('replaceOne');
+  const btnReplaceAll = document.getElementById('replaceAll');
+
+  const find = { open: false, matches: [], current: -1, caseSensitive: false, regex: false, invalid: false };
+  const MAX_FIND_MARKS = 2000;   // marks drawn in the overlay; the count is always exact
+
+  // null: empty query. false: invalid regex.
+  function findRegex(global) {
+    const q = findInput.value;
+    if (!q) return null;
+    const src = find.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try { return new RegExp(src, (global ? 'g' : '') + (find.caseSensitive ? '' : 'i')); }
+    catch (e) { return false; }
+  }
+
+  function collectMatches() {
+    find.matches = [];
+    find.invalid = false;
+    const re = findRegex(true);
+    if (re === null) return;
+    if (re === false) { find.invalid = true; return; }
+    const v = editor.value;
+    let m;
+    while ((m = re.exec(v))) {
+      if (m[0] === '') { re.lastIndex++; continue; }
+      find.matches.push([m.index, m.index + m[0].length]);
+      if (find.matches.length >= 100000) break;
+    }
+  }
+
+  // Index of the first match starting at or after pos (may equal length).
+  function lowerBound(pos) {
+    const ms = find.matches;
+    let lo = 0, hi = ms.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ms[mid][0] < pos) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+  function matchAtOrAfter(pos) {
+    const n = find.matches.length;
+    if (!n) return -1;
+    const i = lowerBound(pos);
+    return i < n ? i : 0;
+  }
+
+  function renderFindLayer() {
+    if (!find.open || !find.matches.length) { findLayer.innerHTML = ''; return; }
+    const v = editor.value;
+    const ms = find.matches;
+    let from = 0, to = ms.length;
+    if (ms.length > MAX_FIND_MARKS) {
+      from = Math.max(0, find.current - MAX_FIND_MARKS / 2);
+      to = Math.min(ms.length, from + MAX_FIND_MARKS);
+    }
+    let out = '', last = 0;
+    for (let i = from; i < to; i++) {
+      const s = ms[i][0], e = ms[i][1];
+      out += escHtml(v.slice(last, s)) +
+        '<span class="' + (i === find.current ? 'f-cur' : 'f-m') + '">' + escHtml(v.slice(s, e)) + '</span>';
+      last = e;
+    }
+    findLayer.innerHTML = out + escHtml(v.slice(last)) + '\n';
+  }
+
+  function updateFindCount() {
+    let text = '', bad = false;
+    if (find.invalid) { text = 'Invalid regex'; bad = true; }
+    else if (!findInput.value) text = '';
+    else if (!find.matches.length) { text = 'No results'; bad = true; }
+    else text = (find.current + 1) + ' of ' + find.matches.length;
+    findCount.textContent = text;
+    findCount.classList.toggle('bad', bad);
+    const none = !find.matches.length;
+    [btnFindPrev, btnFindNext, btnReplaceOne, btnReplaceAll].forEach(b => { b.disabled = none; });
+  }
+
+  // Recompute after the text or the query changed. The current match becomes
+  // the first one at or after the caret. Does not touch the textarea selection.
+  function refreshFind() {
+    if (!find.open) return;
+    collectMatches();
+    find.current = matchAtOrAfter(editor.selectionStart);
+    renderFindLayer();
+    updateFindCount();
+  }
+
+  // Select the current match in the textarea and bring it on screen.
+  function showCurrentMatch() {
+    const m = find.matches[find.current];
+    if (!m) return;
+    editor.setSelectionRange(m[0], m[1]);
+    revealEditorPos(m[0], true);
+    renderFindLayer();
+    updateFindCount();
+    updateCursor();
+  }
+
+  function findStep(dir) {
+    const ms = find.matches;
+    if (!ms.length) return;
+    const cur = ms[find.current];
+    const onCurrent = cur && editor.selectionStart === cur[0] && editor.selectionEnd === cur[1];
+    if (onCurrent) find.current = (find.current + dir + ms.length) % ms.length;
+    else if (dir > 0) find.current = matchAtOrAfter(editor.selectionEnd);
+    else find.current = (lowerBound(editor.selectionStart) - 1 + ms.length) % ms.length;
+    showCurrentMatch();
+  }
+
+  function openFind() {
+    const sel = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+    findBar.hidden = false;
+    find.open = true;
+    if (sel && !sel.includes('\n')) findInput.value = sel;
+    findInput.focus();
+    findInput.select();
+    refreshFind();
+    showCurrentMatch();
+  }
+
+  function closeFind() {
+    if (!find.open) return;
+    findBar.hidden = true;
+    find.open = false;
+    find.matches = [];
+    findLayer.innerHTML = '';
+    if (mode !== 'preview') editor.focus();
+  }
+
+  function replacementFor(matchText) {
+    if (!find.regex) return replaceInput.value;
+    const re = findRegex(false);
+    return re ? matchText.replace(re, replaceInput.value) : replaceInput.value;
+  }
+
+  // Both replacements go through insertText so they sit on the native undo
+  // stack. The input event they raise recomputes the matches.
+  function replaceOne() {
+    const m = find.matches[find.current];
+    if (!m) return;
+    const prev = document.activeElement;
+    insertText(m[0], m[1], replacementFor(editor.value.slice(m[0], m[1])));
+    if (prev && findBar.contains(prev)) prev.focus();
+    showCurrentMatch();
+  }
+
+  function replaceAll() {
+    const ms = find.matches;
+    if (!ms.length) return;
+    const v = editor.value;
+    const start = ms[0][0], end = ms[ms.length - 1][1];
+    let out = '', last = start;
+    for (const [s, e] of ms) { out += v.slice(last, s) + replacementFor(v.slice(s, e)); last = e; }
+    const n = ms.length;
+    const prev = document.activeElement;
+    insertText(start, end, out);   // one span, one undo step
+    if (prev && findBar.contains(prev)) prev.focus();
+    findCount.textContent = 'Replaced ' + n;
+    findCount.classList.remove('bad');
+  }
+
+  function setFindToggle(btn, key, on) {
+    find[key] = on;
+    btn.classList.toggle('toggled', on);
+    btn.setAttribute('aria-pressed', String(on));
+    refreshFind();
+    showCurrentMatch();
+    findInput.focus();
+  }
+
+  findInput.addEventListener('input', () => { refreshFind(); showCurrentMatch(); });
+  findInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+  });
+  replaceInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); if (e.metaKey || e.ctrlKey) replaceAll(); else replaceOne(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+  });
+  // Buttons act on the field that has focus, so a click must not steal it.
+  findBar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+  btnFindPrev.addEventListener('click', () => findStep(-1));
+  btnFindNext.addEventListener('click', () => findStep(1));
+  btnFindCase.addEventListener('click', () => setFindToggle(btnFindCase, 'caseSensitive', !find.caseSensitive));
+  btnFindRegex.addEventListener('click', () => setFindToggle(btnFindRegex, 'regex', !find.regex));
+  document.getElementById('findClose').addEventListener('click', closeFind);
+  btnReplaceOne.addEventListener('click', replaceOne);
+  btnReplaceAll.addEventListener('click', replaceAll);
 
   /* ---------- Scroll sync (split view) ---------- */
   function syncScroll(srcName, srcEl, dstEl) {
@@ -2313,6 +2599,8 @@ return Pe}()
   editor.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
 
+    if (e.key === 'Escape' && find.open) { e.preventDefault(); closeFind(); return; }
+
     if (mod && !e.altKey && !e.shiftKey) {
       const key = e.key.toLowerCase();
       const map = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
@@ -2362,6 +2650,14 @@ return Pe}()
   document.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === 'f' && !e.shiftKey) {
+      if (mode === 'preview') return;   // let the browser search the preview
+      e.preventDefault();
+      openFind();
+      return;
+    }
+    if (key === 'g' && find.open) { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return; }
     if (e.key === 's') { e.preventDefault(); saveFile(); }
     else if (e.key === '1') { e.preventDefault(); setMode('edit'); }
     else if (e.key === '2') { e.preventDefault(); setMode('split'); }

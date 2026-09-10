@@ -6,10 +6,13 @@ The original stays small, offline, and dependency-free. This one is allowed to g
 
 **Try it live:** https://baldrin.github.io/markdown-editor-advanced/
 
+## Features so far
+
+- Markdown syntax highlighting in the editor pane
+- Find and replace (`⌘F`, with match case and regular expression options)
+
 ## Planned
 
-- Find and replace
-- Markdown syntax highlighting in the editor pane
 - Print to PDF
 - Multiple documents, stored in the browser
 - Image paste

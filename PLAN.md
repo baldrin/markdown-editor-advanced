@@ -90,7 +90,7 @@ This goes first because it decides whether the textarea stays. If the overlay ca
 
 - The editor keeps the native textarea undo stack by inserting text with `document.execCommand('insertText')` and falling back to `setRangeText`. New editing features should go through `insertText` in the same way.
 - Scroll sync between the panes uses a `scrollLock` owner and short timers. Typing sets the lock to the editor so preview re-renders cannot scroll the editor away from the caret. Anything that scrolls a pane programmatically should claim the lock first.
-- `ensureCaretVisible` measures the caret with a hidden mirror div. The overlay in step 1 can replace this mirror, since the overlay is a live mirror already.
+- `ensureCaretVisible` and the find bar measure text positions against the overlay with a Range (`overlayLineTop`), since the overlay is a live, laid-out mirror of the textarea. There is no separate hidden mirror any more.
 - The table of contents scroll spy treats a heading as current once it is in the top third of the preview pane and always picks the last heading when the pane is at the bottom.
 
 ## Verification
