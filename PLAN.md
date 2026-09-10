@@ -103,4 +103,6 @@ Things the automated browser checks could not exercise. Tick them off after tryi
 
 - [ ] **Print (step 3).** Press ⌘P on the welcome document. Expect: only the rendered preview, light colours even from dark mode, no page break inside a code block or table row, no heading stranded at the bottom of a page. Cancel or save as PDF.
 - [ ] **Overlay feel (step 1).** Scroll the editor fast with the trackpad and type quickly on a long document. The coloured text should never visibly lag or drift from the caret. Alignment was verified on this machine; the feel of scrolling was not.
+- [ ] **File-backed documents (step 4).** Open a `.md` file with the folder button, edit it, reload the page. Expect the document still listed with a "file" tag, and ⌘S to ask for permission once and then write to the same file. Open the same file again: expect the existing entry to be refreshed, not a duplicate.
+- [ ] **Storage in another browser (step 4).** Open the site in Safari or Firefox once. Expect the welcome document, a working Documents tab, and no error in the status bar.
 - [ ] **Find in preview mode (step 2).** Switch to Preview and press ⌘F. Expect the browser's own find bar, not the editor's.

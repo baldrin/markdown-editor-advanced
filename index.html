@@ -313,14 +313,80 @@ button.fb:disabled { opacity: 0.4; cursor: default; background: transparent; }
   display: none;
 }
 body.toc-open #toc { display: block; }
-#toc .toc-title {
+.side-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.side-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 2px 10px 8px;
+  text-transform: uppercase;
+  padding: 4px 8px 8px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
 }
+.side-tab:hover { color: var(--text); }
+.side-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.docs-head { display: flex; justify-content: flex-end; padding: 0 2px 6px; }
+.doc-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+.doc-item:hover { background: var(--bg3); }
+.doc-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
+.doc-main { flex: 1; min-width: 0; }
+.doc-name { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-item.active .doc-name { color: var(--accent); }
+.doc-meta { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+.doc-actions { display: none; gap: 2px; flex: none; }
+.doc-item:hover .doc-actions, .doc-item.confirm .doc-actions { display: flex; }
+.doc-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+.doc-btn:hover { background: var(--bg); color: var(--text); }
+.doc-btn.text { padding: 0 6px; }
+.doc-btn.danger { color: var(--hl-kw); }
+.doc-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.doc-rename {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.docs-empty { padding: 2px 10px; font-size: 12.5px; color: var(--text-dim); }
 #toc a {
   display: block;
   padding: 3px 10px;
@@ -476,6 +542,9 @@ body.dragging #dropOverlay { display: flex; }
 
 <header id="toolbar">
   <div class="tb-group">
+    <button class="tb" id="btnNew" title="New document">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+    </button>
     <button class="tb" id="btnOpen" title="Open file (drag &amp; drop works too)">
       <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
     </button>
@@ -577,8 +646,15 @@ body.dragging #dropOverlay { display: flex; }
     <article id="preview"></article>
   </section>
   <aside id="toc">
-    <div class="toc-title">Contents</div>
-    <nav id="tocList"></nav>
+    <div class="side-tabs">
+      <button class="side-tab active" data-panel="contents">Contents</button>
+      <button class="side-tab" data-panel="documents">Documents</button>
+    </div>
+    <div id="panelContents"><nav id="tocList"></nav></div>
+    <div id="panelDocuments" hidden>
+      <div class="docs-head"><button class="doc-btn text" id="btnNewDoc" title="New document">+ New</button></div>
+      <div id="docList"></div>
+    </div>
   </aside>
 </div>
 
@@ -2761,9 +2837,10 @@ return Pe}()
 
   /* ---------- Autosave draft ---------- */
   const persistDraft = debounce(() => {
-    store.set('mdadv.content', editor.value);
-    if (!fileHandle && !fileName) saveStateEl.textContent = 'Draft auto-saved ' + timeNow();
+    saveCurrentDoc();
+    if (!fileHandle && !fileName) saveStateEl.textContent = 'Auto-saved ' + timeNow();
   }, 400);
+  const savePositions = debounce(() => { const doc = captureCurrent(); if (doc) storeDoc(doc); }, 800);
 
   const renderDebounced = debounce(() => {
     // Re-assert the lock: the editor's own scroll event may have shortened it.
@@ -2790,26 +2867,29 @@ return Pe}()
   });
 
   /* ---------- File operations ---------- */
-  function loadContent(text, name, handle) {
-    // Silently back up an unsaved draft before replacing it
-    if (!fileHandle && !fileName && editor.value.trim()) {
-      store.set('mdadv.backup', editor.value);
+  // An opened file becomes a document. When it is the same file as an existing
+  // document (both have handles and the browser says so), that document is
+  // refreshed instead of duplicated.
+  async function loadContent(text, name, handle) {
+    let existing = null;
+    if (handle) {
+      for (const d of docs.values()) {
+        if (!d.handle) continue;
+        try { if (await handle.isSameEntry(d.handle)) { existing = d; break; } } catch (e) {}
+      }
     }
-    editor.value = text;
-    renderOverlay();
-    fileHandle = handle || null;
-    fileName = name || '';
-    fileNameEl.textContent = fileName || 'Draft';
-    document.title = (fileName ? fileName + ' — ' : '') + 'Markdown Editor Advanced';
-    setDirty(false);
-    saveStateEl.textContent = fileName ? 'Opened ' + timeNow() : '';
-    store.set('mdadv.content', text);
-    render();
-    updateCounts();
-    editor.setSelectionRange(0, 0);
-    editor.scrollTop = 0;
-    previewPane.scrollTop = 0;
-    updateCursor();
+    if (existing) {
+      if (existing.id !== currentId) { const cur = captureCurrent(); if (cur) storeDoc(cur); }
+      Object.assign(existing, { text, handle, fileName: name || '', dirty: false, modified: Date.now(),
+                                cursor: [0, 0], scroll: { editor: 0, preview: 0 } });
+      sortDocs();
+      showDoc(existing.id);
+      storeDoc(existing);
+    } else {
+      createDoc(text, { fileName: name || '', handle: handle || null });
+    }
+    saveStateEl.textContent = name ? 'Opened ' + timeNow() : '';
+    if (mode !== 'preview') editor.focus();
   }
 
   const pickerTypes = [{
@@ -2853,14 +2933,25 @@ return Pe}()
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
+  // A handle restored from storage needs permission again after a reload.
+  async function ensurePermission(handle) {
+    if (!handle.queryPermission) return true;
+    const opts = { mode: 'readwrite' };
+    if (await handle.queryPermission(opts) === 'granted') return true;
+    return (await handle.requestPermission(opts)) === 'granted';
+  }
+
   async function saveFile() {
     const text = editor.value;
     if (fileHandle) {
       try {
-        await writeHandle(fileHandle, text);
-        setDirty(false);
-        saveStateEl.textContent = 'Saved ' + timeNow();
-        return;
+        if (await ensurePermission(fileHandle)) {
+          await writeHandle(fileHandle, text);
+          setDirty(false);
+          saveStateEl.textContent = 'Saved ' + timeNow();
+          saveCurrentDoc();
+          return;
+        }
       } catch (e) {
         if (e && e.name === 'AbortError') return;
       }
@@ -2874,10 +2965,10 @@ return Pe}()
         await writeHandle(h, text);
         fileHandle = h;
         fileName = h.name;
-        fileNameEl.textContent = fileName;
-        document.title = fileName + ' — Markdown Editor Advanced';
         setDirty(false);
         saveStateEl.textContent = 'Saved ' + timeNow();
+        saveCurrentDoc();
+        refreshTitle();
         return;
       } catch (e) {
         if (e && e.name === 'AbortError') return;
@@ -2906,6 +2997,7 @@ return Pe}()
     downloadBlob(doc, title + '.html', 'text/html');
   }
 
+  document.getElementById('btnNew').addEventListener('click', () => { createDoc(''); if (mode !== 'preview') editor.focus(); });
   document.getElementById('btnOpen').addEventListener('click', openFile);
   document.getElementById('btnSave').addEventListener('click', saveFile);
   document.getElementById('btnExport').addEventListener('click', exportHtml);
@@ -2952,6 +3044,331 @@ return Pe}()
     const f = e.dataTransfer && e.dataTransfer.files[0];
     if (f) loadContent(await f.text(), f.name, null);
   });
+
+
+  /* ---------- Documents (IndexedDB) ---------- */
+  // Every document is one record in the `docs` store. Images get their own
+  // store so the text stays small. The browser copy is the working copy; a
+  // file handle only says where Save writes. Storage is best effort: if
+  // IndexedDB is unavailable the editor keeps working for this tab.
+  const idb = (() => {
+    let opening = null;
+    function open() {
+      if (opening) return opening;
+      opening = new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+        const req = indexedDB.open('mdadv', 1);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          if (!d.objectStoreNames.contains('docs')) {
+            d.createObjectStore('docs', { keyPath: 'id' }).createIndex('modified', 'modified');
+          }
+          if (!d.objectStoreNames.contains('images')) {
+            d.createObjectStore('images', { keyPath: 'id' }).createIndex('docId', 'docId');
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+      });
+      return opening;
+    }
+    function run(storeName, mode, fn) {
+      return open().then(d => new Promise((resolve, reject) => {
+        const t = d.transaction(storeName, mode);
+        const r = fn(t.objectStore(storeName));
+        t.oncomplete = () => resolve(r ? r.result : undefined);
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('Transaction aborted'));
+      }));
+    }
+    return {
+      all: s => run(s, 'readonly', o => o.getAll()),
+      put: (s, v) => run(s, 'readwrite', o => o.put(v)),
+      del: (s, k) => run(s, 'readwrite', o => o.delete(k)),
+      delWhere: (s, index, key) => run(s, 'readwrite', o => {
+        const req = o.index(index).openKeyCursor(IDBKeyRange.only(key));
+        req.onsuccess = () => { const c = req.result; if (c) { o.delete(c.primaryKey); c.continue(); } };
+      })
+    };
+  })();
+
+  const docs = new Map();   // id -> record
+  let docOrder = [];        // ids, most recently modified first; resorted on structural changes only
+  let currentId = null;
+  let storageWarned = false;
+
+  function newId() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  function makeDoc(text) {
+    const now = Date.now();
+    return { id: newId(), name: '', text: text || '', cursor: [0, 0], scroll: { editor: 0, preview: 0 },
+             created: now, modified: now, fileName: '', handle: null, dirty: false };
+  }
+
+  function docTitle(doc) {
+    if (doc.name) return doc.name;
+    if (doc.fileName) return doc.fileName;
+    const m = doc.text.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/m);
+    let t = m ? m[1] : (doc.text.split('\n').find(l => l.trim()) || '');
+    t = t.replace(/[*_`~#>]/g, '').trim();
+    if (!t) return 'Untitled';
+    return t.length > 60 ? t.slice(0, 57) + '…' : t;
+  }
+
+  function storageFailed(e) {
+    if (!storageWarned) {
+      storageWarned = true;
+      saveStateEl.textContent = 'Browser storage unavailable; documents will not persist';
+    }
+    console.warn('Document storage failed', e);
+  }
+
+  async function storeDoc(doc) {
+    try {
+      await idb.put('docs', doc);
+    } catch (e) {
+      if (doc.handle && e && e.name === 'DataCloneError') {
+        // This browser cannot store file handles; keep everything else.
+        try { await idb.put('docs', Object.assign({}, doc, { handle: null })); return; } catch (e2) { e = e2; }
+      }
+      storageFailed(e);
+    }
+  }
+
+  function sortDocs() {
+    docOrder = Array.from(docs.values()).sort((a, b) => b.modified - a.modified).map(d => d.id);
+  }
+
+  // Copy the editor state into the current record. `modified` only moves when the text changed.
+  function captureCurrent() {
+    const doc = docs.get(currentId);
+    if (!doc) return null;
+    if (doc.text !== editor.value) { doc.text = editor.value; doc.modified = Date.now(); }
+    doc.cursor = [editor.selectionStart, editor.selectionEnd];
+    doc.scroll = { editor: editor.scrollTop, preview: previewPane.scrollTop };
+    doc.dirty = dirty;
+    doc.fileName = fileName;
+    doc.handle = fileHandle;
+    return doc;
+  }
+
+  function saveCurrentDoc() {
+    const doc = captureCurrent();
+    if (!doc) return;
+    storeDoc(doc);
+    refreshTitle();
+    if (!docEditing) renderDocList();
+  }
+
+  function refreshTitle() {
+    const doc = docs.get(currentId);
+    const t = doc ? docTitle(doc) : 'Draft';
+    fileNameEl.textContent = t;
+    document.title = t + ' — Markdown Editor Advanced';
+  }
+
+  // Put a document in the editor and restore its caret and scroll positions.
+  function showDoc(id) {
+    const doc = docs.get(id);
+    if (!doc) return;
+    currentId = id;
+    store.set('mdadv.currentDoc', id);
+    fileHandle = doc.handle || null;
+    fileName = doc.fileName || '';
+    editor.value = doc.text;
+    renderOverlay();
+    setDirty(!!doc.dirty);
+    saveStateEl.textContent = '';
+    refreshTitle();
+    render();
+    updateCounts();
+    const c = doc.cursor || [0, 0];
+    editor.setSelectionRange(c[0], c[1]);
+    // Both panes are positioned explicitly; keep the scroll sync out of it.
+    scrollLock = 'restore';
+    clearTimeout(scrollLockTimer);
+    scrollLockTimer = setTimeout(() => { scrollLock = null; }, 200);
+    editor.scrollTop = doc.scroll ? doc.scroll.editor : 0;
+    previewPane.scrollTop = doc.scroll ? doc.scroll.preview : 0;
+    syncOverlayScroll();
+    updateCursor();
+    renderDocList();
+  }
+
+  function switchDoc(id) {
+    if (id === currentId || !docs.has(id)) return;
+    const cur = captureCurrent();
+    if (cur) storeDoc(cur);
+    showDoc(id);
+    if (mode !== 'preview') editor.focus();
+  }
+
+  function createDoc(text, extra) {
+    const cur = captureCurrent();
+    if (cur) storeDoc(cur);
+    const doc = Object.assign(makeDoc(text), extra || {});
+    docs.set(doc.id, doc);
+    storeDoc(doc);
+    sortDocs();
+    showDoc(doc.id);
+    return doc;
+  }
+
+  function deleteDoc(id) {
+    if (!docs.has(id)) return;
+    docs.delete(id);
+    sortDocs();
+    if (id === currentId) {
+      if (docOrder.length) showDoc(docOrder[0]); else createDoc('');
+    } else {
+      renderDocList();
+    }
+    idb.del('docs', id).then(() => idb.delWhere('images', 'docId', id)).catch(storageFailed);
+  }
+
+  function renameDoc(id, name) {
+    const doc = docs.get(id);
+    if (!doc) return;
+    doc.name = name.trim();
+    storeDoc(doc);
+    if (id === currentId) refreshTitle();
+  }
+
+  function relTime(ts) {
+    const d = Date.now() - ts;
+    if (d < 60e3) return 'just now';
+    if (d < 3600e3) return Math.round(d / 60e3) + ' min ago';
+    if (d < 86400e3) return Math.round(d / 3600e3) + ' h ago';
+    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  /* ---------- Documents panel ---------- */
+  const docListEl = document.getElementById('docList');
+  let docEditing = null;   // { id, mode: 'rename' | 'delete' } while a row is being edited
+
+  const ICON_RENAME = '<svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
+  const ICON_DELETE = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
+  function renderDocList() {
+    const frag = document.createDocumentFragment();
+    let focusInput = null;
+    for (const id of docOrder) {
+      const doc = docs.get(id);
+      const item = document.createElement('div');
+      item.className = 'doc-item' + (id === currentId ? ' active' : '');
+      item.dataset.id = id;
+      const editing = docEditing && docEditing.id === id ? docEditing.mode : null;
+      if (editing === 'rename') {
+        const input = document.createElement('input');
+        input.className = 'doc-rename';
+        input.value = doc.name || docTitle(doc);
+        input.setAttribute('aria-label', 'Document name');
+        item.appendChild(input);
+        focusInput = input;
+      } else if (editing === 'delete') {
+        item.classList.add('confirm');
+        item.innerHTML = '<div class="doc-main"><div class="doc-name">Delete "' + escHtml(docTitle(doc)) + '"?</div></div>' +
+          '<div class="doc-actions"><button class="doc-btn text danger" data-act="confirm-delete">Delete</button>' +
+          '<button class="doc-btn text" data-act="cancel">Cancel</button></div>';
+      } else {
+        item.innerHTML = '<div class="doc-main"><div class="doc-name">' + escHtml(docTitle(doc)) + '</div>' +
+          '<div class="doc-meta">' + relTime(doc.modified) + (doc.fileName ? ' · file' : '') + (doc.dirty && doc.fileName ? ' · unsaved' : '') + '</div></div>' +
+          '<div class="doc-actions"><button class="doc-btn" data-act="rename" title="Rename">' + ICON_RENAME + '</button>' +
+          '<button class="doc-btn" data-act="delete" title="Delete">' + ICON_DELETE + '</button></div>';
+      }
+      frag.appendChild(item);
+    }
+    if (!docOrder.length) {
+      const empty = document.createElement('div');
+      empty.className = 'docs-empty';
+      empty.textContent = 'No documents';
+      frag.appendChild(empty);
+    }
+    docListEl.replaceChildren(frag);
+    if (focusInput) { focusInput.focus(); focusInput.select(); }
+  }
+
+  function commitRename(input) {
+    if (!docEditing || docEditing.mode !== 'rename') return;
+    const id = docEditing.id;
+    docEditing = null;
+    renameDoc(id, input.value);
+    renderDocList();
+  }
+  function cancelDocEdit() {
+    if (!docEditing) return;
+    docEditing = null;
+    renderDocList();
+  }
+
+  docListEl.addEventListener('click', e => {
+    const item = e.target.closest('.doc-item');
+    if (!item) return;
+    const id = item.dataset.id;
+    const btn = e.target.closest('button[data-act]');
+    if (btn) {
+      const act = btn.dataset.act;
+      if (act === 'rename') { docEditing = { id, mode: 'rename' }; renderDocList(); }
+      else if (act === 'delete') { docEditing = { id, mode: 'delete' }; renderDocList(); }
+      else if (act === 'confirm-delete') { docEditing = null; deleteDoc(id); }
+      else if (act === 'cancel') cancelDocEdit();
+      return;
+    }
+    if (e.target.closest('input')) return;
+    switchDoc(id);
+  });
+  docListEl.addEventListener('dblclick', e => {
+    const item = e.target.closest('.doc-item');
+    if (!item || e.target.closest('button') || e.target.closest('input')) return;
+    docEditing = { id: item.dataset.id, mode: 'rename' };
+    renderDocList();
+  });
+  docListEl.addEventListener('keydown', e => {
+    if (!e.target.classList.contains('doc-rename')) return;
+    if (e.key === 'Enter') { e.preventDefault(); commitRename(e.target); if (mode !== 'preview') editor.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelDocEdit(); if (mode !== 'preview') editor.focus(); }
+  });
+  docListEl.addEventListener('focusout', e => {
+    if (e.target.classList.contains('doc-rename') && docEditing && docEditing.mode === 'rename') commitRename(e.target);
+  });
+
+  const sideTabs = document.querySelectorAll('.side-tab');
+  function showSidePanel(name) {
+    sideTabs.forEach(b => b.classList.toggle('active', b.dataset.panel === name));
+    document.getElementById('panelContents').hidden = name !== 'contents';
+    document.getElementById('panelDocuments').hidden = name !== 'documents';
+    store.set('mdadv.sidetab', name);
+  }
+  sideTabs.forEach(b => b.addEventListener('click', () => showSidePanel(b.dataset.panel)));
+  document.getElementById('btnNewDoc').addEventListener('click', () => { createDoc(''); if (mode !== 'preview') editor.focus(); });
+
+  // Save positions as they change, and flush everything when the tab goes away.
+  editor.addEventListener('scroll', savePositions);
+  previewPane.addEventListener('scroll', savePositions);
+  editor.addEventListener('keyup', savePositions);
+  editor.addEventListener('click', savePositions);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { const d = captureCurrent(); if (d) storeDoc(d); }
+  });
+  window.addEventListener('pagehide', () => { const d = captureCurrent(); if (d) storeDoc(d); });
+
+  async function initDocuments() {
+    let list = [];
+    try { list = await idb.all('docs'); } catch (e) { storageFailed(e); }
+    if (!list.length) {
+      // One-time import of the single-document draft. The old key is left in
+      // place on purpose: it is the fallback if this storage ever fails.
+      const draft = store.get('mdadv.content');
+      const first = makeDoc(draft != null && draft !== '' ? draft : WELCOME);
+      list = [first];
+      storeDoc(first);
+    }
+    list.forEach(d => docs.set(d.id, d));
+    sortDocs();
+    const wanted = store.get('mdadv.currentDoc');
+    showDoc(docs.has(wanted) ? wanted : docOrder[0]);
+    if (mode !== 'preview') editor.focus();
+  }
 
   /* ---------- Welcome document ---------- */
   const WELCOME = [
@@ -3033,14 +3450,13 @@ return Pe}()
   }
 
   applyThemeIcon();
+  showSidePanel(store.get('mdadv.sidetab') === 'documents' ? 'documents' : 'contents');
 
-  const draft = store.get('mdadv.content');
-  editor.value = draft != null && draft !== '' ? draft : WELCOME;
   renderOverlay();
   render();
   updateCounts();
   updateCursor();
-  if (mode !== 'preview') editor.focus();
+  initDocuments();
 })();
 </script>
 </body>
