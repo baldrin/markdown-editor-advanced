@@ -452,6 +452,24 @@ body.dragging #dropOverlay { display: flex; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Print ---------- */
+/* The app is a fixed-height flex layout with the preview scrolling inside its
+   pane. Printing needs the document to flow, so every scroll container is
+   opened up and only the preview remains. */
+@media print {
+  @page { margin: 18mm 16mm; }
+  html, body { height: auto; overflow: visible; background: #fff; }
+  #toolbar, #findBar, #editorPane, #toc, #status, #dropOverlay { display: none !important; }
+  #main { display: block; }
+  #previewPane { display: block !important; overflow: visible; position: static; }
+  #preview { max-width: none; padding: 0; font-size: 12pt; }
+  #preview pre, #preview blockquote, #preview img, #preview tr { break-inside: avoid; }
+  #preview h1, #preview h2, #preview h3, #preview h4 { break-after: avoid; }
+  #preview pre { white-space: pre-wrap; overflow-wrap: break-word; overflow: visible; }
+  #preview table { display: table; overflow: visible; }
+  #preview a { color: inherit; text-decoration: underline; }
+}
 </style>
 </head>
 <body class="mode-split toc-open">
@@ -466,6 +484,9 @@ body.dragging #dropOverlay { display: flex; }
     </button>
     <button class="tb" id="btnExport" title="Export as HTML">
       <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+    <button class="tb" id="btnPrint" title="Print or save as PDF (⌘P)">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
     </button>
   </div>
   <div class="tb-sep"></div>
@@ -2658,6 +2679,7 @@ return Pe}()
       return;
     }
     if (key === 'g' && find.open) { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return; }
+    if (key === 'p' && !e.shiftKey) { e.preventDefault(); window.print(); return; }
     if (e.key === 's') { e.preventDefault(); saveFile(); }
     else if (e.key === '1') { e.preventDefault(); setMode('edit'); }
     else if (e.key === '2') { e.preventDefault(); setMode('split'); }
@@ -2887,6 +2909,21 @@ return Pe}()
   document.getElementById('btnOpen').addEventListener('click', openFile);
   document.getElementById('btnSave').addEventListener('click', saveFile);
   document.getElementById('btnExport').addEventListener('click', exportHtml);
+
+  /* ---------- Print ---------- */
+  // Print in the light palette whatever the screen theme, and make sure the
+  // preview is not a debounce behind the editor.
+  let themeBeforePrint = null;
+  window.addEventListener('beforeprint', () => {
+    render();
+    themeBeforePrint = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', 'light');
+  });
+  window.addEventListener('afterprint', () => {
+    if (themeBeforePrint) document.documentElement.setAttribute('data-theme', themeBeforePrint);
+    themeBeforePrint = null;
+  });
+  document.getElementById('btnPrint').addEventListener('click', () => window.print());
 
   window.addEventListener('beforeunload', e => {
     if (dirty && fileHandle) {

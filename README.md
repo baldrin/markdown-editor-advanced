@@ -10,10 +10,10 @@ The original stays small, offline, and dependency-free. This one is allowed to g
 
 - Markdown syntax highlighting in the editor pane
 - Find and replace (`⌘F`, with match case and regular expression options)
+- Print to PDF (`⌘P` prints the rendered preview, always in the light theme)
 
 ## Planned
 
-- Print to PDF
 - Multiple documents, stored in the browser
 - Image paste
 - Installable as an app (PWA) with offline support
