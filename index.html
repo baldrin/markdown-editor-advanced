@@ -3067,7 +3067,13 @@ return Pe}()
             d.createObjectStore('images', { keyPath: 'id' }).createIndex('docId', 'docId');
           }
         };
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => {
+          const d = req.result;
+          // Another tab is upgrading or deleting the database: let go of it
+          // and reconnect on the next access.
+          d.onversionchange = () => { d.close(); opening = null; };
+          resolve(d);
+        };
         req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
       });
       return opening;
