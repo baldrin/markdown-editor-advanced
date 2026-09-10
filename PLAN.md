@@ -96,3 +96,11 @@ This goes first because it decides whether the textarea stays. If the overlay ca
 ## Verification
 
 Check each feature in a real browser, not only by reading code: open the page, use the feature, watch the console for errors. Keep the original editor's behaviour intact throughout: file open and save, export, themes, list continuation, Tab handling, shortcuts.
+
+## Needs a hands-on check
+
+Things the automated browser checks could not exercise. Tick them off after trying them; remove the line once confirmed.
+
+- [ ] **Print (step 3).** Press ⌘P on the welcome document. Expect: only the rendered preview, light colours even from dark mode, no page break inside a code block or table row, no heading stranded at the bottom of a page. Cancel or save as PDF.
+- [ ] **Overlay feel (step 1).** Scroll the editor fast with the trackpad and type quickly on a long document. The coloured text should never visibly lag or drift from the caret. Alignment was verified on this machine; the feel of scrolling was not.
+- [ ] **Find in preview mode (step 2).** Switch to Preview and press ⌘F. Expect the browser's own find bar, not the editor's.
