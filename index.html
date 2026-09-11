@@ -525,6 +525,8 @@ body.dragging #dropOverlay { display: flex; }
    opened up and only the preview remains. */
 @media print {
   @page { margin: 18mm 16mm; }
+  /* Full black on paper; the screen palette's soft dark grey prints light. */
+  :root { --text: #000; --text-dim: #444; --border: #bbb; }
   html, body { height: auto; overflow: visible; background: #fff; }
   #toolbar, #findBar, #editorPane, #toc, #status, #dropOverlay { display: none !important; }
   #main { display: block; }
@@ -3005,15 +3007,23 @@ return Pe}()
   /* ---------- Print ---------- */
   // Print in the light palette whatever the screen theme, and make sure the
   // preview is not a debounce behind the editor.
+  // Browsers name a saved PDF after the page title, so it is just the
+  // document name while printing.
   let themeBeforePrint = null;
+  let titleBeforePrint = null;
   window.addEventListener('beforeprint', () => {
     render();
     themeBeforePrint = document.documentElement.getAttribute('data-theme');
     document.documentElement.setAttribute('data-theme', 'light');
+    titleBeforePrint = document.title;
+    const doc = docs.get(currentId);
+    document.title = doc ? docTitle(doc) : 'Document';
   });
   window.addEventListener('afterprint', () => {
     if (themeBeforePrint) document.documentElement.setAttribute('data-theme', themeBeforePrint);
+    if (titleBeforePrint != null) document.title = titleBeforePrint;
     themeBeforePrint = null;
+    titleBeforePrint = null;
   });
   document.getElementById('btnPrint').addEventListener('click', () => window.print());
 

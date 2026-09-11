@@ -101,8 +101,9 @@ Check each feature in a real browser, not only by reading code: open the page, u
 
 Things the automated browser checks could not exercise. Tick them off after trying them; remove the line once confirmed.
 
-- [ ] **Print (step 3).** Press ⌘P on the welcome document. Expect: only the rendered preview, light colours even from dark mode, no page break inside a code block or table row, no heading stranded at the bottom of a page. Cancel or save as PDF.
-- [ ] **Overlay feel (step 1).** Scroll the editor fast with the trackpad and type quickly on a long document. The coloured text should never visibly lag or drift from the caret. Alignment was verified on this machine; the feel of scrolling was not.
-- [ ] **File-backed documents (step 4).** Open a `.md` file with the folder button, edit it, reload the page. Expect the document still listed with a "file" tag, and ⌘S to ask for permission once and then write to the same file. Open the same file again: expect the existing entry to be refreshed, not a duplicate.
+- [ ] **Open a file from disk and save it back (step 4).** Click the folder button, pick an existing `.md` file, type something, press ⌘S. Expect one browser prompt asking to let the site save changes to that file, then "Saved". Reload the page, edit again, press ⌘S: expect the permission prompt once more, then a save straight to the same file with no file-name dialog. Open the same file with the folder button again: expect the existing entry to be refreshed, not a second entry.
 - [ ] **Storage in another browser (step 4).** Open the site in Safari or Firefox once. Expect the welcome document, a working Documents tab, and no error in the status bar.
 - [ ] **Find in preview mode (step 2).** Switch to Preview and press ⌘F. Expect the browser's own find bar, not the editor's.
+- [ ] **Print, second look (step 3).** After the fix on 2026-09-11: text should print full black and the suggested PDF file name should be just the document name.
+
+Confirmed so far: print layout, overlay highlighting and feel, documents panel (create, rename, delete, switch, persistence across reload and new tab).
