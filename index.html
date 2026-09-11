@@ -2976,9 +2976,11 @@ return Pe}()
         if (e && e.name === 'AbortError') return;
       }
     }
+    // No file handle and no picker: this browser cannot write to a file in
+    // place, so Save hands the browser a copy to download.
     downloadBlob(text, fileName || 'untitled.md', 'text/markdown');
     setDirty(false);
-    saveStateEl.textContent = 'Downloaded ' + timeNow();
+    saveStateEl.textContent = 'Downloaded a copy ' + timeNow();
   }
 
   function exportHtml() {
@@ -3288,7 +3290,7 @@ return Pe}()
           '<button class="doc-btn text" data-act="cancel">Cancel</button></div>';
       } else {
         item.innerHTML = '<div class="doc-main"><div class="doc-name">' + escHtml(docTitle(doc)) + '</div>' +
-          '<div class="doc-meta">' + relTime(doc.modified) + (doc.fileName ? ' · file' : '') + (doc.dirty && doc.fileName ? ' · unsaved' : '') + '</div></div>' +
+          '<div class="doc-meta">' + relTime(doc.modified) + (doc.handle ? ' · file' : '') + (doc.dirty && doc.handle ? ' · unsaved' : '') + '</div></div>' +
           '<div class="doc-actions"><button class="doc-btn" data-act="rename" title="Rename">' + ICON_RENAME + '</button>' +
           '<button class="doc-btn" data-act="delete" title="Delete">' + ICON_DELETE + '</button></div>';
       }
