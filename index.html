@@ -2757,7 +2757,7 @@ return Pe}()
       return;
     }
     if (key === 'g' && find.open) { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return; }
-    if (key === 'p' && !e.shiftKey) { e.preventDefault(); window.print(); return; }
+    if (key === 'p' && !e.shiftKey) { e.preventDefault(); printDocument(); return; }
     if (e.key === 's') { e.preventDefault(); saveFile(); }
     else if (e.key === '1') { e.preventDefault(); setMode('edit'); }
     else if (e.key === '2') { e.preventDefault(); setMode('split'); }
@@ -3013,21 +3013,27 @@ return Pe}()
   // document name while printing.
   let themeBeforePrint = null;
   let titleBeforePrint = null;
-  window.addEventListener('beforeprint', () => {
+  function preparePrint() {
+    if (titleBeforePrint != null) return;   // already prepared by the Print button or ⌘P
     render();
     themeBeforePrint = document.documentElement.getAttribute('data-theme');
     document.documentElement.setAttribute('data-theme', 'light');
     titleBeforePrint = document.title;
     const doc = docs.get(currentId);
     document.title = doc ? docTitle(doc) : 'Document';
-  });
-  window.addEventListener('afterprint', () => {
+  }
+  function finishPrint() {
     if (themeBeforePrint) document.documentElement.setAttribute('data-theme', themeBeforePrint);
     if (titleBeforePrint != null) document.title = titleBeforePrint;
     themeBeforePrint = null;
     titleBeforePrint = null;
-  });
-  document.getElementById('btnPrint').addEventListener('click', () => window.print());
+  }
+  // Our own triggers prepare before asking to print; the events cover the
+  // browser's File menu and ensure cleanup either way.
+  function printDocument() { preparePrint(); window.print(); }
+  window.addEventListener('beforeprint', preparePrint);
+  window.addEventListener('afterprint', finishPrint);
+  document.getElementById('btnPrint').addEventListener('click', printDocument);
 
   window.addEventListener('beforeunload', e => {
     if (dirty && fileHandle) {
