@@ -35,6 +35,8 @@
   --hl-type: #953800;
   --hl-var: #0550ae;
   --hl-meta: #82071e;
+  --find-bg: rgba(255, 213, 0, 0.35);
+  --find-cur: rgba(255, 140, 0, 0.6);
 }
 :root[data-theme="dark"] {
   --bg: #0d1117;
@@ -55,6 +57,8 @@
   --hl-type: #ffa657;
   --hl-var: #79c0ff;
   --hl-meta: #ffa198;
+  --find-bg: rgba(255, 213, 0, 0.22);
+  --find-cur: rgba(255, 140, 0, 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -162,27 +166,129 @@ button.tb.toggled { background: var(--accent-soft); color: var(--accent); }
   display: flex;
   flex-direction: column;
 }
-#editorPane { border-right: 1px solid var(--border); }
+#editorPane { border-right: 1px solid var(--border); background: var(--bg); }
+#editorWrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
 body.mode-edit #previewPane { display: none; }
 body.mode-edit #editorPane { border-right: none; }
 body.mode-preview #editorPane { display: none; }
 
+/* The editor is a transparent textarea over a coloured copy of its text.
+   Every property below that affects glyph placement or wrapping must stay
+   identical on both, or the two layers drift. */
+#editor, #overlayText, #findLayer {
+  margin: 0;
+  padding: 24px 28px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13.5px;
+  line-height: 1.7;
+  letter-spacing: normal;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+  text-indent: 0;
+}
 #editor {
   flex: 1;
   width: 100%;
   border: none;
   resize: none;
   outline: none;
-  padding: 24px 28px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 13.5px;
-  line-height: 1.7;
-  tab-size: 2;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
   caret-color: var(--accent);
 }
+#editor::placeholder { color: var(--text-dim); opacity: 1; }
 #editor::selection { background: var(--accent-soft); }
+#overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text);
+}
+#overlayScroll { position: relative; will-change: transform; }
+#findLayer { position: absolute; inset: 0; color: transparent; }
+.f-m { background: var(--find-bg); border-radius: 2px; }
+.f-cur { background: var(--find-cur); border-radius: 2px; }
+
+/* ---------- Find bar ---------- */
+#findBar {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+#findBar[hidden] { display: none; }
+.find-row { display: flex; align-items: center; gap: 4px; }
+.find-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.find-row input:focus { border-color: var(--accent); }
+#findCount {
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: right;
+  padding: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+#findCount.bad { color: var(--hl-kw); }
+button.fb {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  height: 24px;
+  min-width: 26px;
+  padding: 0 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+button.fb:hover { background: var(--bg3); }
+button.fb:active { background: var(--accent-soft); }
+button.fb.toggled { background: var(--accent-soft); color: var(--accent); }
+button.fb:disabled { opacity: 0.4; cursor: default; background: transparent; }
+/* Overlay tokens: colour and decoration only, never weight, style, size or family. */
+.o-h, .o-hmark { color: var(--accent); }
+.o-code { color: var(--hl-str); }
+.o-fence { color: var(--text-dim); }
+.o-mark { color: var(--hl-num); }
+.o-strong { color: var(--hl-type); }
+.o-del { color: var(--text-dim); text-decoration: line-through; }
+.o-link { color: var(--accent); }
+.o-url { color: var(--text-dim); text-decoration: underline; }
+.o-quote { color: var(--hl-fn); }
+.o-quotebody { color: var(--text-dim); }
+.o-list { color: var(--hl-num); }
+.o-task { color: var(--hl-fn); }
+.o-pipe, .o-hr, .o-tag { color: var(--text-dim); }
 
 #previewPane {
   overflow-y: auto;
@@ -207,14 +313,80 @@ body.mode-preview #editorPane { display: none; }
   display: none;
 }
 body.toc-open #toc { display: block; }
-#toc .toc-title {
+.side-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.side-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 2px 10px 8px;
+  text-transform: uppercase;
+  padding: 4px 8px 8px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
 }
+.side-tab:hover { color: var(--text); }
+.side-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.docs-head { display: flex; justify-content: flex-end; padding: 0 2px 6px; }
+.doc-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+.doc-item:hover { background: var(--bg3); }
+.doc-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
+.doc-main { flex: 1; min-width: 0; }
+.doc-name { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-item.active .doc-name { color: var(--accent); }
+.doc-meta { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+.doc-actions { display: none; gap: 2px; flex: none; }
+.doc-item:hover .doc-actions, .doc-item.confirm .doc-actions { display: flex; }
+.doc-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+.doc-btn:hover { background: var(--bg); color: var(--text); }
+.doc-btn.text { padding: 0 6px; }
+.doc-btn.danger { color: var(--hl-kw); }
+.doc-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.doc-rename {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.docs-empty { padding: 2px 10px; font-size: 12.5px; color: var(--text-dim); }
 #toc a {
   display: block;
   padding: 3px 10px;
@@ -346,12 +518,35 @@ body.dragging #dropOverlay { display: flex; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Print ---------- */
+/* The app is a fixed-height flex layout with the preview scrolling inside its
+   pane. Printing needs the document to flow, so every scroll container is
+   opened up and only the preview remains. */
+@media print {
+  @page { margin: 18mm 16mm; }
+  /* Full black on paper; the screen palette's soft dark grey prints light. */
+  :root { --text: #000; --text-dim: #444; --border: #bbb; }
+  html, body { height: auto; overflow: visible; background: #fff; }
+  #toolbar, #findBar, #editorPane, #toc, #status, #dropOverlay { display: none !important; }
+  #main { display: block; }
+  #previewPane { display: block !important; overflow: visible; position: static; }
+  #preview { max-width: none; padding: 0; font-size: 12pt; }
+  #preview pre, #preview blockquote, #preview img, #preview tr { break-inside: avoid; }
+  #preview h1, #preview h2, #preview h3, #preview h4 { break-after: avoid; }
+  #preview pre { white-space: pre-wrap; overflow-wrap: break-word; overflow: visible; }
+  #preview table { display: table; overflow: visible; }
+  #preview a { color: inherit; text-decoration: underline; }
+}
 </style>
 </head>
 <body class="mode-split toc-open">
 
 <header id="toolbar">
   <div class="tb-group">
+    <button class="tb" id="btnNew" title="New document">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+    </button>
     <button class="tb" id="btnOpen" title="Open file (drag &amp; drop works too)">
       <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
     </button>
@@ -360,6 +555,9 @@ body.dragging #dropOverlay { display: flex; }
     </button>
     <button class="tb" id="btnExport" title="Export as HTML">
       <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+    <button class="tb" id="btnPrint" title="Print or save as PDF (⌘P)">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
     </button>
   </div>
   <div class="tb-sep"></div>
@@ -425,14 +623,40 @@ body.dragging #dropOverlay { display: flex; }
 
 <div id="main">
   <section id="editorPane">
-    <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="Start writing markdown…"></textarea>
+    <div id="findBar" hidden>
+      <div class="find-row">
+        <input id="findInput" type="text" placeholder="Find" spellcheck="false" autocomplete="off" aria-label="Find">
+        <span id="findCount" aria-live="polite"></span>
+        <button class="fb" id="findPrev" title="Previous match (Shift+Enter)">&#8593;</button>
+        <button class="fb" id="findNext" title="Next match (Enter)">&#8595;</button>
+        <button class="fb" id="findCase" title="Match case" aria-pressed="false">Aa</button>
+        <button class="fb" id="findRegex" title="Regular expression" aria-pressed="false">.*</button>
+        <button class="fb" id="findClose" title="Close (Esc)">&#10005;</button>
+      </div>
+      <div class="find-row">
+        <input id="replaceInput" type="text" placeholder="Replace" spellcheck="false" autocomplete="off" aria-label="Replace">
+        <button class="fb" id="replaceOne" title="Replace this match (Enter)">Replace</button>
+        <button class="fb" id="replaceAll" title="Replace all matches (&#8984;Enter)">All</button>
+      </div>
+    </div>
+    <div id="editorWrap">
+      <div id="overlay" aria-hidden="true"><div id="overlayScroll"><div id="findLayer"></div><div id="overlayText"></div></div></div>
+      <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="Start writing markdown…"></textarea>
+    </div>
   </section>
   <section id="previewPane">
     <article id="preview"></article>
   </section>
   <aside id="toc">
-    <div class="toc-title">Contents</div>
-    <nav id="tocList"></nav>
+    <div class="side-tabs">
+      <button class="side-tab active" data-panel="contents">Contents</button>
+      <button class="side-tab" data-panel="documents">Documents</button>
+    </div>
+    <div id="panelContents"><nav id="tocList"></nav></div>
+    <div id="panelDocuments" hidden>
+      <div class="docs-head"><button class="doc-btn text" id="btnNewDoc" title="New document">+ New</button></div>
+      <div id="docList"></div>
+    </div>
   </aside>
 </div>
 
@@ -1947,48 +2171,373 @@ return Pe}()
     });
   }
 
-  /* ---------- Keep the caret on screen ---------- */
-  // A textarea scrolls its caret into view natively, but the split-view sync
-  // can move the editor again right after (the preview re-renders, fires a
-  // scroll event, and mirrors its position back). Measure the caret line with
-  // a hidden mirror of the textarea and scroll it into view explicitly.
-  let caretMirror = null;
-  function ensureCaretVisible() {
-    if (document.activeElement !== editor) return;
-    if (!caretMirror) {
-      caretMirror = document.createElement('div');
-      caretMirror.setAttribute('aria-hidden', 'true');
-      Object.assign(caretMirror.style, {
-        position: 'absolute', top: '0', left: '-9999px', visibility: 'hidden',
-        whiteSpace: 'pre-wrap', wordWrap: 'break-word', overflowWrap: 'break-word',
-        boxSizing: 'border-box', pointerEvents: 'none'
-      });
-      document.body.appendChild(caretMirror);
+  /* ---------- Editor overlay (markdown highlighting) ---------- */
+  // A coloured copy of the source sits under the transparent textarea. Only
+  // colour and text-decoration are applied, so glyph widths match exactly.
+  const overlayScroll = document.getElementById('overlayScroll');
+  const overlayText = document.getElementById('overlayText');
+
+  const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const tok = (cls, s) => s ? '<span class="' + cls + '">' + escHtml(s) + '</span>' : '';
+
+  // Inline constructs, tried left to right at each position:
+  //  1-2 code span   3-7 link/image   8 autolink   9-10 strong
+  //  11-12 emphasis  13-14 strikethrough  then html tag, then bare URL
+  const INLINE_RE = /(`+)([\s\S]*?[^`])\1(?!`)|(!?\[)([^\]]*)(\]\()([^)]*)(\))|<((?:https?:\/\/|mailto:)[^>\s]+|[^\s@<>]+@[^\s@<>]+)>|(\*\*|__)(?=\S)([\s\S]*?\S)\9|(?<![A-Za-z0-9])(\*|_)(?=\S)([^*_]*?\S)\11(?![A-Za-z0-9])|(~~)(?=\S)([\s\S]*?\S)\13|<\/?[A-Za-z][^<>]*>|https?:\/\/[^\s<>]+/g;
+
+  function hlInline(s) {
+    let out = '', last = 0, m;
+    INLINE_RE.lastIndex = 0;
+    while ((m = INLINE_RE.exec(s))) {
+      const next = INLINE_RE.lastIndex;
+      out += escHtml(s.slice(last, m.index));
+      last = next;
+      if (m[1] !== undefined) out += tok('o-code', m[0]);
+      else if (m[3] !== undefined) out += tok('o-mark', m[3]) + tok('o-link', m[4]) + tok('o-mark', m[5]) + tok('o-url', m[6]) + tok('o-mark', m[7]);
+      else if (m[8] !== undefined) out += tok('o-mark', '<') + tok('o-url', m[8]) + tok('o-mark', '>');
+      else if (m[9] !== undefined) out += tok('o-mark', m[9]) + '<span class="o-strong">' + hlInline(m[10]) + '</span>' + tok('o-mark', m[9]);
+      else if (m[11] !== undefined) out += tok('o-mark', m[11]) + '<span class="o-em">' + hlInline(m[12]) + '</span>' + tok('o-mark', m[11]);
+      else if (m[13] !== undefined) out += tok('o-mark', '~~') + '<span class="o-del">' + hlInline(m[14]) + '</span>' + tok('o-mark', '~~');
+      else if (m[0][0] === '<') out += tok('o-tag', m[0]);
+      else out += tok('o-url', m[0]);
+      INLINE_RE.lastIndex = next; // recursion above resets it
     }
-    const cs = getComputedStyle(editor);
-    ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
-     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tabSize', 'borderWidth']
-      .forEach(k => { caretMirror.style[k] = cs[k]; });
-    caretMirror.style.width = editor.clientWidth + 'px';
+    return out + escHtml(s.slice(last));
+  }
 
-    const pos = editor.selectionEnd;
-    caretMirror.textContent = editor.value.slice(0, pos);
-    const marker = document.createElement('span');
-    marker.textContent = editor.value.slice(pos, pos + 1) || '\u200b';
-    caretMirror.appendChild(marker);
+  function hlBlock(line) {
+    let out = '', rest = line, m;
+    const bq = rest.match(/^(\s{0,3}>\s?)+/);
+    if (bq) {
+      out += tok('o-quote', bq[0]);
+      rest = rest.slice(bq[0].length);
+      return out + '<span class="o-quotebody">' + hlBlock(rest) + '</span>';
+    }
+    if ((m = rest.match(/^(\s{0,3}#{1,6})(\s+|$)([\s\S]*)$/))) {
+      return out + tok('o-hmark', m[1] + m[2]) + '<span class="o-h">' + hlInline(m[3]) + '</span>';
+    }
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(rest)) return out + tok('o-hr', rest);
+    if (/^\s{0,3}=+\s*$/.test(rest)) return out + tok('o-hmark', rest);
+    if ((m = rest.match(/^(\s*)([-*+]|\d{1,9}[.)])(\s+)/))) {
+      out += escHtml(m[1]) + tok('o-list', m[2]) + escHtml(m[3]);
+      rest = rest.slice(m[0].length);
+      const t = rest.match(/^\[[ xX]\](?=\s|$)/);
+      if (t) { out += tok('o-task', t[0]); rest = rest.slice(t[0].length); }
+    }
+    if (rest.includes('|')) {
+      if (/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(rest)) return out + tok('o-pipe', rest);
+      return out + rest.split(/(\|)/).map(p => p === '|' ? tok('o-pipe', p) : hlInline(p)).join('');
+    }
+    return out + hlInline(rest);
+  }
 
-    const lineHeight = parseFloat(cs.lineHeight) || 22;
-    const caretTop = marker.offsetTop;
-    const caretBottom = caretTop + lineHeight;
+  function highlightMarkdown(text) {
+    const lines = text.split('\n');
+    const out = new Array(lines.length);
+    let fence = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const fm = line.match(/^(\s{0,3})(`{3,}|~{3,})(.*)$/);
+      if (fence) {
+        if (fm && fm[2][0] === fence.ch && fm[2].length >= fence.len && !fm[3].trim()) {
+          out[i] = tok('o-fence', line);
+          fence = null;
+        } else {
+          out[i] = tok('o-code', line);
+        }
+        continue;
+      }
+      if (fm && !(fm[2][0] === '`' && fm[3].includes('`'))) {
+        fence = { ch: fm[2][0], len: fm[2].length };
+        out[i] = tok('o-fence', line);
+        continue;
+      }
+      out[i] = hlBlock(line);
+    }
+    // A trailing newline inside a block is dropped by the renderer, but the
+    // textarea shows the empty line after it. One extra newline keeps them equal.
+    return out.join('\n') + '\n';
+  }
+
+  function renderOverlay() {
+    overlayText.innerHTML = highlightMarkdown(editor.value);
+    fitOverlay(); // a scrollbar may have appeared or gone with this edit
+    refreshFind();
+  }
+
+  let overlayScrollPending = false;
+  function syncOverlayScroll() {
+    if (overlayScrollPending) return;
+    overlayScrollPending = true;
+    requestAnimationFrame(() => {
+      overlayScrollPending = false;
+      overlayScroll.style.transform = 'translate(' + (-editor.scrollLeft) + 'px,' + (-editor.scrollTop) + 'px)';
+    });
+  }
+
+  // The overlay must wrap at the textarea's content width, which excludes any
+  // visible scrollbar, so it is sized from clientWidth rather than 100%.
+  let overlayWidth = -1;
+  function fitOverlay() {
+    const w = editor.clientWidth;
+    if (w !== overlayWidth) {
+      overlayWidth = w;
+      overlayScroll.style.width = w + 'px';
+    }
+    syncOverlayScroll();
+  }
+  new ResizeObserver(fitOverlay).observe(editor);
+
+
+  /* ---------- Keep a position on screen ---------- */
+  // The overlay is a live, laid-out mirror of the textarea, so a text offset
+  // can be measured there with a Range instead of a separate hidden copy.
+  function overlayLineTop(pos) {
+    const walker = document.createTreeWalker(overlayText, NodeFilter.SHOW_TEXT);
+    let node, acc = 0;
+    while ((node = walker.nextNode())) {
+      const len = node.nodeValue.length;
+      if (pos < acc + len) {
+        const r = document.createRange();
+        r.setStart(node, pos - acc);
+        r.setEnd(node, pos - acc + 1);
+        const rects = r.getClientRects();
+        if (!rects.length) return null;
+        return rects[0].top - overlayScroll.getBoundingClientRect().top;
+      }
+      acc += len;
+    }
+    return null;
+  }
+
+  // Scroll the textarea so the line holding `pos` is visible. With `center`
+  // the line lands a third of the way down, which suits jumping to a match.
+  function revealEditorPos(pos, center) {
+    const top = overlayLineTop(pos);
+    if (top == null) return;
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 22;
+    const bottom = top + lineHeight;
     const margin = 8;
     const viewTop = editor.scrollTop;
     const viewBottom = viewTop + editor.clientHeight;
-    if (caretTop < viewTop + margin) {
-      editor.scrollTop = Math.max(0, caretTop - margin);
-    } else if (caretBottom > viewBottom - margin) {
-      editor.scrollTop = caretBottom - editor.clientHeight + margin;
+    if (top >= viewTop + margin && bottom <= viewBottom - margin) return;
+    let target;
+    if (center) target = top - editor.clientHeight / 3;
+    else if (top < viewTop + margin) target = top - margin;
+    else target = bottom - editor.clientHeight + margin;
+    scrollLock = 'editor';
+    clearTimeout(scrollLockTimer);
+    scrollLockTimer = setTimeout(() => { scrollLock = null; }, 200);
+    editor.scrollTop = Math.max(0, target);
+  }
+
+  // A textarea scrolls its caret into view natively, but the split-view sync
+  // can move the editor again right after (the preview re-renders, fires a
+  // scroll event, and mirrors its position back). Put the caret back on screen.
+  function ensureCaretVisible() {
+    if (document.activeElement !== editor) return;
+    revealEditorPos(editor.selectionEnd, false);
+  }
+
+  /* ---------- Find and replace ---------- */
+  const findBar = document.getElementById('findBar');
+  const findInput = document.getElementById('findInput');
+  const replaceInput = document.getElementById('replaceInput');
+  const findCount = document.getElementById('findCount');
+  const findLayer = document.getElementById('findLayer');
+  const btnFindPrev = document.getElementById('findPrev');
+  const btnFindNext = document.getElementById('findNext');
+  const btnFindCase = document.getElementById('findCase');
+  const btnFindRegex = document.getElementById('findRegex');
+  const btnReplaceOne = document.getElementById('replaceOne');
+  const btnReplaceAll = document.getElementById('replaceAll');
+
+  const find = { open: false, matches: [], current: -1, caseSensitive: false, regex: false, invalid: false };
+  const MAX_FIND_MARKS = 2000;   // marks drawn in the overlay; the count is always exact
+
+  // null: empty query. false: invalid regex.
+  function findRegex(global) {
+    const q = findInput.value;
+    if (!q) return null;
+    const src = find.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try { return new RegExp(src, (global ? 'g' : '') + (find.caseSensitive ? '' : 'i')); }
+    catch (e) { return false; }
+  }
+
+  function collectMatches() {
+    find.matches = [];
+    find.invalid = false;
+    const re = findRegex(true);
+    if (re === null) return;
+    if (re === false) { find.invalid = true; return; }
+    const v = editor.value;
+    let m;
+    while ((m = re.exec(v))) {
+      if (m[0] === '') { re.lastIndex++; continue; }
+      find.matches.push([m.index, m.index + m[0].length]);
+      if (find.matches.length >= 100000) break;
     }
   }
+
+  // Index of the first match starting at or after pos (may equal length).
+  function lowerBound(pos) {
+    const ms = find.matches;
+    let lo = 0, hi = ms.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ms[mid][0] < pos) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+  function matchAtOrAfter(pos) {
+    const n = find.matches.length;
+    if (!n) return -1;
+    const i = lowerBound(pos);
+    return i < n ? i : 0;
+  }
+
+  function renderFindLayer() {
+    if (!find.open || !find.matches.length) { findLayer.innerHTML = ''; return; }
+    const v = editor.value;
+    const ms = find.matches;
+    let from = 0, to = ms.length;
+    if (ms.length > MAX_FIND_MARKS) {
+      from = Math.max(0, find.current - MAX_FIND_MARKS / 2);
+      to = Math.min(ms.length, from + MAX_FIND_MARKS);
+    }
+    let out = '', last = 0;
+    for (let i = from; i < to; i++) {
+      const s = ms[i][0], e = ms[i][1];
+      out += escHtml(v.slice(last, s)) +
+        '<span class="' + (i === find.current ? 'f-cur' : 'f-m') + '">' + escHtml(v.slice(s, e)) + '</span>';
+      last = e;
+    }
+    findLayer.innerHTML = out + escHtml(v.slice(last)) + '\n';
+  }
+
+  function updateFindCount() {
+    let text = '', bad = false;
+    if (find.invalid) { text = 'Invalid regex'; bad = true; }
+    else if (!findInput.value) text = '';
+    else if (!find.matches.length) { text = 'No results'; bad = true; }
+    else text = (find.current + 1) + ' of ' + find.matches.length;
+    findCount.textContent = text;
+    findCount.classList.toggle('bad', bad);
+    const none = !find.matches.length;
+    [btnFindPrev, btnFindNext, btnReplaceOne, btnReplaceAll].forEach(b => { b.disabled = none; });
+  }
+
+  // Recompute after the text or the query changed. The current match becomes
+  // the first one at or after the caret. Does not touch the textarea selection.
+  function refreshFind() {
+    if (!find.open) return;
+    collectMatches();
+    find.current = matchAtOrAfter(editor.selectionStart);
+    renderFindLayer();
+    updateFindCount();
+  }
+
+  // Select the current match in the textarea and bring it on screen.
+  function showCurrentMatch() {
+    const m = find.matches[find.current];
+    if (!m) return;
+    editor.setSelectionRange(m[0], m[1]);
+    revealEditorPos(m[0], true);
+    renderFindLayer();
+    updateFindCount();
+    updateCursor();
+  }
+
+  function findStep(dir) {
+    const ms = find.matches;
+    if (!ms.length) return;
+    const cur = ms[find.current];
+    const onCurrent = cur && editor.selectionStart === cur[0] && editor.selectionEnd === cur[1];
+    if (onCurrent) find.current = (find.current + dir + ms.length) % ms.length;
+    else if (dir > 0) find.current = matchAtOrAfter(editor.selectionEnd);
+    else find.current = (lowerBound(editor.selectionStart) - 1 + ms.length) % ms.length;
+    showCurrentMatch();
+  }
+
+  function openFind() {
+    const sel = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+    findBar.hidden = false;
+    find.open = true;
+    if (sel && !sel.includes('\n')) findInput.value = sel;
+    findInput.focus();
+    findInput.select();
+    refreshFind();
+    showCurrentMatch();
+  }
+
+  function closeFind() {
+    if (!find.open) return;
+    findBar.hidden = true;
+    find.open = false;
+    find.matches = [];
+    findLayer.innerHTML = '';
+    if (mode !== 'preview') editor.focus();
+  }
+
+  function replacementFor(matchText) {
+    if (!find.regex) return replaceInput.value;
+    const re = findRegex(false);
+    return re ? matchText.replace(re, replaceInput.value) : replaceInput.value;
+  }
+
+  // Both replacements go through insertText so they sit on the native undo
+  // stack. The input event they raise recomputes the matches.
+  function replaceOne() {
+    const m = find.matches[find.current];
+    if (!m) return;
+    const prev = document.activeElement;
+    insertText(m[0], m[1], replacementFor(editor.value.slice(m[0], m[1])));
+    if (prev && findBar.contains(prev)) prev.focus();
+    showCurrentMatch();
+  }
+
+  function replaceAll() {
+    const ms = find.matches;
+    if (!ms.length) return;
+    const v = editor.value;
+    const start = ms[0][0], end = ms[ms.length - 1][1];
+    let out = '', last = start;
+    for (const [s, e] of ms) { out += v.slice(last, s) + replacementFor(v.slice(s, e)); last = e; }
+    const n = ms.length;
+    const prev = document.activeElement;
+    insertText(start, end, out);   // one span, one undo step
+    if (prev && findBar.contains(prev)) prev.focus();
+    findCount.textContent = 'Replaced ' + n;
+    findCount.classList.remove('bad');
+  }
+
+  function setFindToggle(btn, key, on) {
+    find[key] = on;
+    btn.classList.toggle('toggled', on);
+    btn.setAttribute('aria-pressed', String(on));
+    refreshFind();
+    showCurrentMatch();
+    findInput.focus();
+  }
+
+  findInput.addEventListener('input', () => { refreshFind(); showCurrentMatch(); });
+  findInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+  });
+  replaceInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); if (e.metaKey || e.ctrlKey) replaceAll(); else replaceOne(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+  });
+  // Buttons act on the field that has focus, so a click must not steal it.
+  findBar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+  btnFindPrev.addEventListener('click', () => findStep(-1));
+  btnFindNext.addEventListener('click', () => findStep(1));
+  btnFindCase.addEventListener('click', () => setFindToggle(btnFindCase, 'caseSensitive', !find.caseSensitive));
+  btnFindRegex.addEventListener('click', () => setFindToggle(btnFindRegex, 'regex', !find.regex));
+  document.getElementById('findClose').addEventListener('click', closeFind);
+  btnReplaceOne.addEventListener('click', replaceOne);
+  btnReplaceAll.addEventListener('click', replaceAll);
 
   /* ---------- Scroll sync (split view) ---------- */
   function syncScroll(srcName, srcEl, dstEl) {
@@ -2004,6 +2553,7 @@ return Pe}()
   }
 
   editor.addEventListener('scroll', () => {
+    syncOverlayScroll();
     if (mode === 'split') syncScroll('editor', editor, previewPane);
   });
   previewPane.addEventListener('scroll', () => {
@@ -2148,6 +2698,8 @@ return Pe}()
   editor.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
 
+    if (e.key === 'Escape' && find.open) { e.preventDefault(); closeFind(); return; }
+
     if (mod && !e.altKey && !e.shiftKey) {
       const key = e.key.toLowerCase();
       const map = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
@@ -2197,6 +2749,15 @@ return Pe}()
   document.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === 'f' && !e.shiftKey) {
+      if (mode === 'preview') return;   // let the browser search the preview
+      e.preventDefault();
+      openFind();
+      return;
+    }
+    if (key === 'g' && find.open) { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return; }
+    if (key === 'p' && !e.shiftKey) { e.preventDefault(); printDocument(); return; }
     if (e.key === 's') { e.preventDefault(); saveFile(); }
     else if (e.key === '1') { e.preventDefault(); setMode('edit'); }
     else if (e.key === '2') { e.preventDefault(); setMode('split'); }
@@ -2278,9 +2839,10 @@ return Pe}()
 
   /* ---------- Autosave draft ---------- */
   const persistDraft = debounce(() => {
-    store.set('mdadv.content', editor.value);
-    if (!fileHandle && !fileName) saveStateEl.textContent = 'Draft auto-saved ' + timeNow();
+    saveCurrentDoc();
+    if (!fileHandle && !fileName) saveStateEl.textContent = 'Auto-saved ' + timeNow();
   }, 400);
+  const savePositions = debounce(() => { const doc = captureCurrent(); if (doc) storeDoc(doc); }, 800);
 
   const renderDebounced = debounce(() => {
     // Re-assert the lock: the editor's own scroll event may have shortened it.
@@ -2292,6 +2854,7 @@ return Pe}()
   }, 120);
 
   editor.addEventListener('input', () => {
+    renderOverlay();
     setDirty(true);
     // While typing, the editor drives the sync; a preview re-render must not
     // scroll the editor away from the caret.
@@ -2306,25 +2869,29 @@ return Pe}()
   });
 
   /* ---------- File operations ---------- */
-  function loadContent(text, name, handle) {
-    // Silently back up an unsaved draft before replacing it
-    if (!fileHandle && !fileName && editor.value.trim()) {
-      store.set('mdadv.backup', editor.value);
+  // An opened file becomes a document. When it is the same file as an existing
+  // document (both have handles and the browser says so), that document is
+  // refreshed instead of duplicated.
+  async function loadContent(text, name, handle) {
+    let existing = null;
+    if (handle) {
+      for (const d of docs.values()) {
+        if (!d.handle) continue;
+        try { if (await handle.isSameEntry(d.handle)) { existing = d; break; } } catch (e) {}
+      }
     }
-    editor.value = text;
-    fileHandle = handle || null;
-    fileName = name || '';
-    fileNameEl.textContent = fileName || 'Draft';
-    document.title = (fileName ? fileName + ' — ' : '') + 'Markdown Editor Advanced';
-    setDirty(false);
-    saveStateEl.textContent = fileName ? 'Opened ' + timeNow() : '';
-    store.set('mdadv.content', text);
-    render();
-    updateCounts();
-    editor.setSelectionRange(0, 0);
-    editor.scrollTop = 0;
-    previewPane.scrollTop = 0;
-    updateCursor();
+    if (existing) {
+      if (existing.id !== currentId) { const cur = captureCurrent(); if (cur) storeDoc(cur); }
+      Object.assign(existing, { text, handle, fileName: name || '', dirty: false, modified: Date.now(),
+                                cursor: [0, 0], scroll: { editor: 0, preview: 0 } });
+      sortDocs();
+      showDoc(existing.id);
+      storeDoc(existing);
+    } else {
+      createDoc(text, { fileName: name || '', handle: handle || null });
+    }
+    saveStateEl.textContent = name ? 'Opened ' + timeNow() : '';
+    if (mode !== 'preview') editor.focus();
   }
 
   const pickerTypes = [{
@@ -2368,14 +2935,25 @@ return Pe}()
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
+  // A handle restored from storage needs permission again after a reload.
+  async function ensurePermission(handle) {
+    if (!handle.queryPermission) return true;
+    const opts = { mode: 'readwrite' };
+    if (await handle.queryPermission(opts) === 'granted') return true;
+    return (await handle.requestPermission(opts)) === 'granted';
+  }
+
   async function saveFile() {
     const text = editor.value;
     if (fileHandle) {
       try {
-        await writeHandle(fileHandle, text);
-        setDirty(false);
-        saveStateEl.textContent = 'Saved ' + timeNow();
-        return;
+        if (await ensurePermission(fileHandle)) {
+          await writeHandle(fileHandle, text);
+          setDirty(false);
+          saveStateEl.textContent = 'Saved ' + timeNow();
+          saveCurrentDoc();
+          return;
+        }
       } catch (e) {
         if (e && e.name === 'AbortError') return;
       }
@@ -2389,18 +2967,20 @@ return Pe}()
         await writeHandle(h, text);
         fileHandle = h;
         fileName = h.name;
-        fileNameEl.textContent = fileName;
-        document.title = fileName + ' — Markdown Editor Advanced';
         setDirty(false);
         saveStateEl.textContent = 'Saved ' + timeNow();
+        saveCurrentDoc();
+        refreshTitle();
         return;
       } catch (e) {
         if (e && e.name === 'AbortError') return;
       }
     }
+    // No file handle and no picker: this browser cannot write to a file in
+    // place, so Save hands the browser a copy to download.
     downloadBlob(text, fileName || 'untitled.md', 'text/markdown');
     setDirty(false);
-    saveStateEl.textContent = 'Downloaded ' + timeNow();
+    saveStateEl.textContent = 'Downloaded a copy ' + timeNow();
   }
 
   function exportHtml() {
@@ -2421,9 +3001,39 @@ return Pe}()
     downloadBlob(doc, title + '.html', 'text/html');
   }
 
+  document.getElementById('btnNew').addEventListener('click', () => { createDoc(''); if (mode !== 'preview') editor.focus(); });
   document.getElementById('btnOpen').addEventListener('click', openFile);
   document.getElementById('btnSave').addEventListener('click', saveFile);
   document.getElementById('btnExport').addEventListener('click', exportHtml);
+
+  /* ---------- Print ---------- */
+  // Print in the light palette whatever the screen theme, and make sure the
+  // preview is not a debounce behind the editor.
+  // Browsers name a saved PDF after the page title, so it is just the
+  // document name while printing.
+  let themeBeforePrint = null;
+  let titleBeforePrint = null;
+  function preparePrint() {
+    if (titleBeforePrint != null) return;   // already prepared by the Print button or ⌘P
+    render();
+    themeBeforePrint = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', 'light');
+    titleBeforePrint = document.title;
+    const doc = docs.get(currentId);
+    document.title = doc ? docTitle(doc) : 'Document';
+  }
+  function finishPrint() {
+    if (themeBeforePrint) document.documentElement.setAttribute('data-theme', themeBeforePrint);
+    if (titleBeforePrint != null) document.title = titleBeforePrint;
+    themeBeforePrint = null;
+    titleBeforePrint = null;
+  }
+  // Our own triggers prepare before asking to print; the events cover the
+  // browser's File menu and ensure cleanup either way.
+  function printDocument() { preparePrint(); window.print(); }
+  window.addEventListener('beforeprint', preparePrint);
+  window.addEventListener('afterprint', finishPrint);
+  document.getElementById('btnPrint').addEventListener('click', printDocument);
 
   window.addEventListener('beforeunload', e => {
     if (dirty && fileHandle) {
@@ -2452,6 +3062,337 @@ return Pe}()
     const f = e.dataTransfer && e.dataTransfer.files[0];
     if (f) loadContent(await f.text(), f.name, null);
   });
+
+
+  /* ---------- Documents (IndexedDB) ---------- */
+  // Every document is one record in the `docs` store. Images get their own
+  // store so the text stays small. The browser copy is the working copy; a
+  // file handle only says where Save writes. Storage is best effort: if
+  // IndexedDB is unavailable the editor keeps working for this tab.
+  const idb = (() => {
+    let opening = null;
+    function open() {
+      if (opening) return opening;
+      opening = new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+        const req = indexedDB.open('mdadv', 1);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          if (!d.objectStoreNames.contains('docs')) {
+            d.createObjectStore('docs', { keyPath: 'id' }).createIndex('modified', 'modified');
+          }
+          if (!d.objectStoreNames.contains('images')) {
+            d.createObjectStore('images', { keyPath: 'id' }).createIndex('docId', 'docId');
+          }
+        };
+        req.onsuccess = () => {
+          const d = req.result;
+          // Another tab is upgrading or deleting the database: let go of it
+          // and reconnect on the next access.
+          d.onversionchange = () => { d.close(); opening = null; };
+          resolve(d);
+        };
+        req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+      });
+      return opening;
+    }
+    function run(storeName, mode, fn) {
+      return open().then(d => new Promise((resolve, reject) => {
+        const t = d.transaction(storeName, mode);
+        const r = fn(t.objectStore(storeName));
+        t.oncomplete = () => resolve(r ? r.result : undefined);
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('Transaction aborted'));
+      }));
+    }
+    return {
+      all: s => run(s, 'readonly', o => o.getAll()),
+      put: (s, v) => run(s, 'readwrite', o => o.put(v)),
+      del: (s, k) => run(s, 'readwrite', o => o.delete(k)),
+      delWhere: (s, index, key) => run(s, 'readwrite', o => {
+        const req = o.index(index).openKeyCursor(IDBKeyRange.only(key));
+        req.onsuccess = () => { const c = req.result; if (c) { o.delete(c.primaryKey); c.continue(); } };
+      })
+    };
+  })();
+
+  const docs = new Map();   // id -> record
+  let docOrder = [];        // ids, most recently modified first; resorted on structural changes only
+  let currentId = null;
+  let storageWarned = false;
+
+  function newId() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  function makeDoc(text) {
+    const now = Date.now();
+    return { id: newId(), name: '', text: text || '', cursor: [0, 0], scroll: { editor: 0, preview: 0 },
+             created: now, modified: now, fileName: '', handle: null, dirty: false };
+  }
+
+  function docTitle(doc) {
+    if (doc.name) return doc.name;
+    if (doc.fileName) return doc.fileName;
+    const m = doc.text.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/m);
+    let t = m ? m[1] : (doc.text.split('\n').find(l => l.trim()) || '');
+    t = t.replace(/[*_`~#>]/g, '').trim();
+    if (!t) return 'Untitled';
+    return t.length > 60 ? t.slice(0, 57) + '…' : t;
+  }
+
+  function storageFailed(e) {
+    if (!storageWarned) {
+      storageWarned = true;
+      saveStateEl.textContent = 'Browser storage unavailable; documents will not persist';
+    }
+    console.warn('Document storage failed', e);
+  }
+
+  async function storeDoc(doc) {
+    try {
+      await idb.put('docs', doc);
+    } catch (e) {
+      if (doc.handle && e && e.name === 'DataCloneError') {
+        // This browser cannot store file handles; keep everything else.
+        try { await idb.put('docs', Object.assign({}, doc, { handle: null })); return; } catch (e2) { e = e2; }
+      }
+      storageFailed(e);
+    }
+  }
+
+  function sortDocs() {
+    docOrder = Array.from(docs.values()).sort((a, b) => b.modified - a.modified).map(d => d.id);
+  }
+
+  // Copy the editor state into the current record. `modified` only moves when the text changed.
+  function captureCurrent() {
+    const doc = docs.get(currentId);
+    if (!doc) return null;
+    if (doc.text !== editor.value) { doc.text = editor.value; doc.modified = Date.now(); }
+    doc.cursor = [editor.selectionStart, editor.selectionEnd];
+    doc.scroll = { editor: editor.scrollTop, preview: previewPane.scrollTop };
+    doc.dirty = dirty;
+    doc.fileName = fileName;
+    doc.handle = fileHandle;
+    return doc;
+  }
+
+  function saveCurrentDoc() {
+    const doc = captureCurrent();
+    if (!doc) return;
+    storeDoc(doc);
+    refreshTitle();
+    if (!docEditing) renderDocList();
+  }
+
+  function refreshTitle() {
+    const doc = docs.get(currentId);
+    const t = doc ? docTitle(doc) : 'Draft';
+    fileNameEl.textContent = t;
+    document.title = t + ' — Markdown Editor Advanced';
+  }
+
+  // Put a document in the editor and restore its caret and scroll positions.
+  function showDoc(id) {
+    const doc = docs.get(id);
+    if (!doc) return;
+    currentId = id;
+    store.set('mdadv.currentDoc', id);
+    fileHandle = doc.handle || null;
+    fileName = doc.fileName || '';
+    editor.value = doc.text;
+    renderOverlay();
+    setDirty(!!doc.dirty);
+    saveStateEl.textContent = '';
+    refreshTitle();
+    render();
+    updateCounts();
+    const c = doc.cursor || [0, 0];
+    editor.setSelectionRange(c[0], c[1]);
+    // Both panes are positioned explicitly; keep the scroll sync out of it.
+    scrollLock = 'restore';
+    clearTimeout(scrollLockTimer);
+    scrollLockTimer = setTimeout(() => { scrollLock = null; }, 200);
+    editor.scrollTop = doc.scroll ? doc.scroll.editor : 0;
+    previewPane.scrollTop = doc.scroll ? doc.scroll.preview : 0;
+    syncOverlayScroll();
+    updateCursor();
+    renderDocList();
+  }
+
+  function switchDoc(id) {
+    if (id === currentId || !docs.has(id)) return;
+    const cur = captureCurrent();
+    if (cur) storeDoc(cur);
+    showDoc(id);
+    if (mode !== 'preview') editor.focus();
+  }
+
+  function createDoc(text, extra) {
+    const cur = captureCurrent();
+    if (cur) storeDoc(cur);
+    const doc = Object.assign(makeDoc(text), extra || {});
+    docs.set(doc.id, doc);
+    storeDoc(doc);
+    sortDocs();
+    showDoc(doc.id);
+    return doc;
+  }
+
+  function deleteDoc(id) {
+    if (!docs.has(id)) return;
+    docs.delete(id);
+    sortDocs();
+    if (id === currentId) {
+      if (docOrder.length) showDoc(docOrder[0]); else createDoc('');
+    } else {
+      renderDocList();
+    }
+    idb.del('docs', id).then(() => idb.delWhere('images', 'docId', id)).catch(storageFailed);
+  }
+
+  function renameDoc(id, name) {
+    const doc = docs.get(id);
+    if (!doc) return;
+    doc.name = name.trim();
+    storeDoc(doc);
+    if (id === currentId) refreshTitle();
+  }
+
+  function relTime(ts) {
+    const d = Date.now() - ts;
+    if (d < 60e3) return 'just now';
+    if (d < 3600e3) return Math.round(d / 60e3) + ' min ago';
+    if (d < 86400e3) return Math.round(d / 3600e3) + ' h ago';
+    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  /* ---------- Documents panel ---------- */
+  const docListEl = document.getElementById('docList');
+  let docEditing = null;   // { id, mode: 'rename' | 'delete' } while a row is being edited
+
+  const ICON_RENAME = '<svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>';
+  const ICON_DELETE = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
+  function renderDocList() {
+    const frag = document.createDocumentFragment();
+    let focusInput = null;
+    for (const id of docOrder) {
+      const doc = docs.get(id);
+      const item = document.createElement('div');
+      item.className = 'doc-item' + (id === currentId ? ' active' : '');
+      item.dataset.id = id;
+      const editing = docEditing && docEditing.id === id ? docEditing.mode : null;
+      if (editing === 'rename') {
+        const input = document.createElement('input');
+        input.className = 'doc-rename';
+        input.value = doc.name || docTitle(doc);
+        input.setAttribute('aria-label', 'Document name');
+        item.appendChild(input);
+        focusInput = input;
+      } else if (editing === 'delete') {
+        item.classList.add('confirm');
+        item.innerHTML = '<div class="doc-main"><div class="doc-name">Delete "' + escHtml(docTitle(doc)) + '"?</div></div>' +
+          '<div class="doc-actions"><button class="doc-btn text danger" data-act="confirm-delete">Delete</button>' +
+          '<button class="doc-btn text" data-act="cancel">Cancel</button></div>';
+      } else {
+        item.innerHTML = '<div class="doc-main"><div class="doc-name">' + escHtml(docTitle(doc)) + '</div>' +
+          '<div class="doc-meta">' + relTime(doc.modified) + (doc.handle ? ' · file' : '') + (doc.dirty && doc.handle ? ' · unsaved' : '') + '</div></div>' +
+          '<div class="doc-actions"><button class="doc-btn" data-act="rename" title="Rename">' + ICON_RENAME + '</button>' +
+          '<button class="doc-btn" data-act="delete" title="Delete">' + ICON_DELETE + '</button></div>';
+      }
+      frag.appendChild(item);
+    }
+    if (!docOrder.length) {
+      const empty = document.createElement('div');
+      empty.className = 'docs-empty';
+      empty.textContent = 'No documents';
+      frag.appendChild(empty);
+    }
+    docListEl.replaceChildren(frag);
+    if (focusInput) { focusInput.focus(); focusInput.select(); }
+  }
+
+  function commitRename(input) {
+    if (!docEditing || docEditing.mode !== 'rename') return;
+    const id = docEditing.id;
+    docEditing = null;
+    renameDoc(id, input.value);
+    renderDocList();
+  }
+  function cancelDocEdit() {
+    if (!docEditing) return;
+    docEditing = null;
+    renderDocList();
+  }
+
+  docListEl.addEventListener('click', e => {
+    const item = e.target.closest('.doc-item');
+    if (!item) return;
+    const id = item.dataset.id;
+    const btn = e.target.closest('button[data-act]');
+    if (btn) {
+      const act = btn.dataset.act;
+      if (act === 'rename') { docEditing = { id, mode: 'rename' }; renderDocList(); }
+      else if (act === 'delete') { docEditing = { id, mode: 'delete' }; renderDocList(); }
+      else if (act === 'confirm-delete') { docEditing = null; deleteDoc(id); }
+      else if (act === 'cancel') cancelDocEdit();
+      return;
+    }
+    if (e.target.closest('input')) return;
+    switchDoc(id);
+  });
+  docListEl.addEventListener('dblclick', e => {
+    const item = e.target.closest('.doc-item');
+    if (!item || e.target.closest('button') || e.target.closest('input')) return;
+    docEditing = { id: item.dataset.id, mode: 'rename' };
+    renderDocList();
+  });
+  docListEl.addEventListener('keydown', e => {
+    if (!e.target.classList.contains('doc-rename')) return;
+    if (e.key === 'Enter') { e.preventDefault(); commitRename(e.target); if (mode !== 'preview') editor.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelDocEdit(); if (mode !== 'preview') editor.focus(); }
+  });
+  docListEl.addEventListener('focusout', e => {
+    if (e.target.classList.contains('doc-rename') && docEditing && docEditing.mode === 'rename') commitRename(e.target);
+  });
+
+  const sideTabs = document.querySelectorAll('.side-tab');
+  function showSidePanel(name) {
+    sideTabs.forEach(b => b.classList.toggle('active', b.dataset.panel === name));
+    document.getElementById('panelContents').hidden = name !== 'contents';
+    document.getElementById('panelDocuments').hidden = name !== 'documents';
+    store.set('mdadv.sidetab', name);
+  }
+  sideTabs.forEach(b => b.addEventListener('click', () => showSidePanel(b.dataset.panel)));
+  document.getElementById('btnNewDoc').addEventListener('click', () => { createDoc(''); if (mode !== 'preview') editor.focus(); });
+
+  // Save positions as they change, and flush everything when the tab goes away.
+  editor.addEventListener('scroll', savePositions);
+  previewPane.addEventListener('scroll', savePositions);
+  editor.addEventListener('keyup', savePositions);
+  editor.addEventListener('click', savePositions);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { const d = captureCurrent(); if (d) storeDoc(d); }
+  });
+  window.addEventListener('pagehide', () => { const d = captureCurrent(); if (d) storeDoc(d); });
+
+  async function initDocuments() {
+    let list = [];
+    try { list = await idb.all('docs'); } catch (e) { storageFailed(e); }
+    if (!list.length) {
+      // One-time import of the single-document draft. The old key is left in
+      // place on purpose: it is the fallback if this storage ever fails.
+      const draft = store.get('mdadv.content');
+      const first = makeDoc(draft != null && draft !== '' ? draft : WELCOME);
+      list = [first];
+      storeDoc(first);
+    }
+    list.forEach(d => docs.set(d.id, d));
+    sortDocs();
+    const wanted = store.get('mdadv.currentDoc');
+    showDoc(docs.has(wanted) ? wanted : docOrder[0]);
+    if (mode !== 'preview') editor.focus();
+  }
 
   /* ---------- Welcome document ---------- */
   const WELCOME = [
@@ -2533,13 +3474,13 @@ return Pe}()
   }
 
   applyThemeIcon();
+  showSidePanel(store.get('mdadv.sidetab') === 'documents' ? 'documents' : 'contents');
 
-  const draft = store.get('mdadv.content');
-  editor.value = draft != null && draft !== '' ? draft : WELCOME;
+  renderOverlay();
   render();
   updateCounts();
   updateCursor();
-  if (mode !== 'preview') editor.focus();
+  initDocuments();
 })();
 </script>
 </body>
