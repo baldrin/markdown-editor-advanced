@@ -26,6 +26,9 @@
   --accent: #0969da;
   --accent-soft: rgba(9, 105, 218, 0.12);
   --code-bg: #f6f8fa;
+  --code-fg: #b3245c;
+  --code-inline-bg: rgba(179, 36, 92, 0.07);
+  --code-inline-border: rgba(179, 36, 92, 0.22);
   --shadow: rgba(31, 35, 40, 0.08);
   --hl-kw: #cf222e;
   --hl-str: #0a3069;
@@ -48,6 +51,9 @@
   --accent: #4493f8;
   --accent-soft: rgba(68, 147, 248, 0.15);
   --code-bg: #161b22;
+  --code-fg: #f2a1c4;
+  --code-inline-bg: rgba(242, 161, 196, 0.1);
+  --code-inline-border: rgba(242, 161, 196, 0.25);
   --shadow: rgba(0, 0, 0, 0.4);
   --hl-kw: #ff7b72;
   --hl-str: #a5d6ff;
@@ -491,13 +497,18 @@ body.dragging #dropOverlay { display: flex; }
 #preview a { color: var(--accent); text-decoration: none; }
 #preview a:hover { text-decoration: underline; }
 #preview img { max-width: 100%; border-radius: 6px; }
+/* Inline code is tinted so a file name or a key reads as code at a glance;
+   fenced blocks below reset the tint and keep their own colours. */
 #preview code {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.86em;
-  background: var(--bg3);
-  padding: 0.15em 0.4em;
+  color: var(--code-fg);
+  background: var(--code-inline-bg);
+  border: 1px solid var(--code-inline-border);
+  padding: 0.1em 0.35em;
   border-radius: 5px;
 }
+#preview a code { color: inherit; }
 #preview pre {
   background: var(--code-bg);
   border: 1px solid var(--border);
@@ -506,7 +517,7 @@ body.dragging #dropOverlay { display: flex; }
   overflow-x: auto;
   line-height: 1.5;
 }
-#preview pre code { background: none; padding: 0; font-size: 0.85em; display: block; }
+#preview pre code { color: inherit; background: none; border: none; padding: 0; font-size: 0.85em; display: block; }
 #preview blockquote {
   border-left: 3px solid var(--border);
   padding: 0.1em 1em;
@@ -562,6 +573,7 @@ body.dragging #dropOverlay { display: flex; }
   #preview pre { white-space: pre-wrap; overflow-wrap: break-word; overflow: visible; }
   #preview table { display: table; overflow: visible; }
   #preview a { color: inherit; text-decoration: underline; }
+  #preview code { color: #000; border-color: #bbb; }
 }
 </style>
 </head>
