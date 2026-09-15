@@ -92,6 +92,8 @@ This goes first because it decides whether the textarea stays. If the overlay ca
 - Scroll sync between the panes uses a `scrollLock` owner and short timers. Typing sets the lock to the editor so preview re-renders cannot scroll the editor away from the caret. Anything that scrolls a pane programmatically should claim the lock first.
 - `ensureCaretVisible` and the find bar measure text positions against the overlay with a Range (`overlayLineTop`), since the overlay is a live, laid-out mirror of the textarea. There is no separate hidden mirror any more.
 - The table of contents scroll spy treats a heading as current once it is in the top third of the preview pane and always picks the last heading when the pane is at the bottom.
+- The preview is capped at the printable width of a Letter sheet under the print margins, at the print font size, so what wraps on screen wraps the same way on paper. The full-width toggle in the toolbar lifts the cap; the exported HTML keeps it. Tables shrink their columns and wrap cell text before they ever get a horizontal scrollbar; only content that cannot break, like a long URL, still scrolls.
+- The split divider stores the editor's share of the two panes as a flex-grow weight, not a width, so the ratio holds when the window or the sidebar changes size. A weight below 1 leaves space unfilled, which is why the single-pane modes force the visible pane back to 1.
 
 ## Verification
 
@@ -104,6 +106,7 @@ Things the automated browser checks could not exercise. Tick them off after tryi
 - [ ] **Open a file from disk and save it back (step 4).** Brave ships with the file-handle API off, so in Brave every Save downloads a copy and the document keeps its original name; that is expected. To test the real round trip either use Chrome or Edge, or in Brave open `brave://flags/#file-system-access-api`, enable it, and relaunch. Then: click the folder button, pick an existing `.md` file, type something, press ⌘S. Expect one browser prompt asking to let the site save changes to that file, then "Saved". Reload the page, edit again, press ⌘S: expect the permission prompt once more, then a save straight to the same file with no file-name dialog. Open the same file with the folder button again: expect the existing entry to be refreshed, not a second entry.
 - [ ] **Storage in another browser (step 4).** Open the site in Safari or Firefox once. Expect the welcome document, a working Documents tab, and no error in the status bar.
 - [ ] **Find in preview mode (step 2).** Switch to Preview and press ⌘F. Expect the browser's own find bar, not the editor's.
+- [ ] **Page width matches the PDF.** Print the welcome document to PDF from Chrome at Letter size and compare a wrapped paragraph and the table with the preview in page-width mode (full-width toggle off): lines should break in the same places. A4 is 6 mm narrower, so a few lines may differ there.
 - [ ] **Print, second look (step 3).** After the fix on 2026-09-11: text should print full black and the suggested PDF file name should be just the document name.
 
 Confirmed so far: print layout, overlay highlighting and feel, documents panel (create, rename, delete, switch, persistence across reload and new tab).

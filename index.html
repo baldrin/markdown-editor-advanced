@@ -160,13 +160,31 @@ button.tb.toggled { background: var(--accent-soft); color: var(--accent); }
   display: flex;
   min-height: 0;
 }
+/* The two panes share the space left beside the sidebar in the ratio set by
+   dragging the splitter. Grow weights rather than a fixed width keep the
+   ratio when the window or the sidebar changes size. */
 #editorPane, #previewPane {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
-#editorPane { border-right: 1px solid var(--border); background: var(--bg); }
+#editorPane { flex-grow: var(--split-left, 1); border-right: 1px solid var(--border); background: var(--bg); }
+#previewPane { flex-grow: var(--split-right, 1); }
+#splitter {
+  display: none;
+  flex: none;
+  width: 7px;
+  margin: 0 -3px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+body.mode-split #splitter { display: block; }
+#splitter:hover, #splitter.dragging { background: var(--accent); opacity: 0.5; }
+body.splitting { cursor: col-resize; user-select: none; }
+body.splitting #editor, body.splitting #previewPane { pointer-events: none; }
 #editorWrap {
   flex: 1;
   min-height: 0;
@@ -177,6 +195,8 @@ button.tb.toggled { background: var(--accent-soft); color: var(--accent); }
 body.mode-edit #previewPane { display: none; }
 body.mode-edit #editorPane { border-right: none; }
 body.mode-preview #editorPane { display: none; }
+/* A grow weight below 1 leaves space unfilled when a pane is alone. */
+body.mode-edit #editorPane, body.mode-preview #previewPane { flex-grow: 1; }
 
 /* The editor is a transparent textarea over a coloured copy of its text.
    Every property below that affects glyph placement or wrapping must stay
@@ -295,12 +315,17 @@ button.fb:disabled { opacity: 0.4; cursor: default; background: transparent; }
   position: relative;
   scroll-behavior: auto;
 }
+/* Page width: the printable width of a Letter sheet under the print margins
+   below, at the print font size, so lines and table cells wrap on screen
+   where they will on paper. The full-width toggle lifts the cap. */
 #preview {
-  max-width: 860px;
+  max-width: calc(183.9mm + 64px);
   width: 100%;
   margin: 0 auto;
   padding: 24px 32px 60vh;
+  font-size: 12pt;
 }
+body.preview-wide #preview { max-width: none; }
 
 /* ---------- TOC sidebar ---------- */
 #toc {
@@ -448,7 +473,7 @@ body.dirty #dirtyDot { display: inline-block; }
 body.dragging #dropOverlay { display: flex; }
 
 /* ---------- Preview typography ---------- */
-#preview { font-size: 15px; line-height: 1.65; word-wrap: break-word; }
+#preview { line-height: 1.65; word-wrap: break-word; }
 #preview > :first-child { margin-top: 0; }
 #preview h1, #preview h2, #preview h3, #preview h4, #preview h5, #preview h6 {
   margin: 1.5em 0 0.6em;
@@ -528,7 +553,7 @@ body.dragging #dropOverlay { display: flex; }
   /* Full black on paper; the screen palette's soft dark grey prints light. */
   :root { --text: #000; --text-dim: #444; --border: #bbb; }
   html, body { height: auto; overflow: visible; background: #fff; }
-  #toolbar, #findBar, #editorPane, #toc, #status, #dropOverlay { display: none !important; }
+  #toolbar, #findBar, #editorPane, #splitter, #toc, #status, #dropOverlay { display: none !important; }
   #main { display: block; }
   #previewPane { display: block !important; overflow: visible; position: static; }
   #preview { max-width: none; padding: 0; font-size: 12pt; }
@@ -608,6 +633,9 @@ body.dragging #dropOverlay { display: flex; }
       <button data-mode="split" class="active">Split</button>
       <button data-mode="preview">Preview</button>
     </div>
+    <button class="tb" id="btnWide" title="Full-width preview. Off shows the page width used when printing">
+      <svg viewBox="0 0 24 24"><polyline points="7 8 3 12 7 16"/><polyline points="17 8 21 12 17 16"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+    </button>
   </div>
   <div class="tb-sep"></div>
   <div class="tb-group">
@@ -644,6 +672,7 @@ body.dragging #dropOverlay { display: flex; }
       <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="Start writing markdown…"></textarea>
     </div>
   </section>
+  <div id="splitter" title="Drag to resize the panes; double-click to even them out"></div>
   <section id="previewPane">
     <article id="preview"></article>
   </section>
@@ -2788,6 +2817,49 @@ return Pe}()
   }
   document.getElementById('btnToc').addEventListener('click', toggleToc);
 
+  function setWide(on) {
+    body.classList.toggle('preview-wide', on);
+    document.getElementById('btnWide').classList.toggle('toggled', on);
+    store.set('mdadv.wide', on ? '1' : '0');
+  }
+  document.getElementById('btnWide').addEventListener('click', () => {
+    setWide(!body.classList.contains('preview-wide'));
+  });
+
+  /* ---------- Split divider ---------- */
+  // The ratio is editor width over the width of both panes together, so it
+  // survives the sidebar opening and the window resizing.
+  const main = document.getElementById('main');
+  const splitter = document.getElementById('splitter');
+  const editorPane = document.getElementById('editorPane');
+  function setSplit(ratio) {
+    ratio = Math.min(0.8, Math.max(0.2, ratio));
+    main.style.setProperty('--split-left', ratio);
+    main.style.setProperty('--split-right', 1 - ratio);
+    store.set('mdadv.split', String(ratio));
+  }
+  function endSplit() {
+    splitter.classList.remove('dragging');
+    body.classList.remove('splitting');
+  }
+  splitter.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    splitter.setPointerCapture(e.pointerId);
+    splitter.classList.add('dragging');
+    body.classList.add('splitting');
+  });
+  splitter.addEventListener('pointermove', e => {
+    if (!splitter.classList.contains('dragging')) return;
+    const left = editorPane.getBoundingClientRect().left;
+    const right = previewPane.getBoundingClientRect().right;
+    if (right <= left) return;
+    setSplit((e.clientX - left) / (right - left));
+  });
+  splitter.addEventListener('pointerup', endSplit);
+  splitter.addEventListener('pointercancel', endSplit);
+  splitter.addEventListener('dblclick', () => setSplit(0.5));
+
   function applyThemeIcon() {
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     document.getElementById('iconSun').style.display = dark ? '' : 'none';
@@ -3472,6 +3544,10 @@ return Pe}()
   } else {
     document.getElementById('btnToc').classList.add('toggled');
   }
+
+  setWide(store.get('mdadv.wide') === '1');
+  const savedSplit = parseFloat(store.get('mdadv.split'));
+  if (savedSplit >= 0.2 && savedSplit <= 0.8) setSplit(savedSplit);
 
   applyThemeIcon();
   showSidePanel(store.get('mdadv.sidetab') === 'documents' ? 'documents' : 'contents');
